@@ -56,7 +56,7 @@ export const compareScreen: Screen = ({ root, back, params, nav }) => {
     const xs = x ? RANK[x.status] : -1;
     const ys = y ? RANK[y.status] : -1;
     const cell = (m: Metric | undefined, win: boolean) =>
-      h('div', { class: `v ${win ? 'win' : ''}` }, m ? h('span', { class: `sd st-${m.status}` }) : null, m ? m.value : '—');
+      h('div', { class: `v ${win ? 'win' : ''}` }, m ? h('span', { class: `sd st-${m.status}` }) : null, h('span', { style: 'min-width:0;overflow:hidden;text-overflow:ellipsis' }, m ? (m.value.includes('Hz') ? m.value.split(' · ')[0] : m.value.replace(' · ', ' ')) : '—'));
     table.append(h('div', { class: 'cmp-row' }, h('div', { class: 'lab' }, label), cell(x, xs > ys), cell(y, ys > xs)));
   }
 

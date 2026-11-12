@@ -1,6 +1,7 @@
 import numpy as np
 from PIL import Image, ImageDraw, ImageFilter
 W,H=640,480
+OW,OH=960,720
 def frame(t):
     im=Image.new('RGB',(W,H))
     d=ImageDraw.Draw(im)
@@ -31,9 +32,9 @@ def frame(t):
     im=im.filter(ImageFilter.GaussianBlur(0.6))
     return im
 with open('tests/fixtures/person.y4m','wb') as f:
-    f.write(f'YUV4MPEG2 W{W} H{H} F30:1 Ip A1:1 C420jpeg\n'.encode())
+    f.write(f'YUV4MPEG2 W{OW} H{OH} F30:1 Ip A1:1 C420jpeg\n'.encode())
     for t in range(60):
-        ycc=np.asarray(frame(t).convert('YCbCr'))
+        ycc=np.asarray(frame(t).resize((OW,OH),Image.LANCZOS).convert('YCbCr'))
         Y=ycc[:,:,0]; U=ycc[::2,::2,1]; V=ycc[::2,::2,2]
         f.write(b'FRAME\n'); f.write(Y.tobytes()); f.write(U.tobytes()); f.write(V.tobytes())
 frame(0).save('/tmp/person.png')

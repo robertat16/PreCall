@@ -88,8 +88,8 @@ export function toneBars(t: ToneBalance): HTMLElement {
   const pos = (db: number) => 50 + (Math.max(-RANGE, Math.min(RANGE, db)) / RANGE) * 50;
   const row = (label: string, db: number, lo: number, hi: number, note: string) => {
     const ok = db >= lo && db <= hi;
-    const nearLo = ok && db < lo + 2.5;
-    const nearHi = ok && db > hi - 2.5;
+    const nearLo = ok && db < -4;
+    const nearHi = ok && db > 4;
     return h('div', { class: 'eq-row' },
       h('div', { class: 'eq-l' }, label),
       h('div', { class: 'eq-track' },
