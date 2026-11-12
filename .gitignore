@@ -1,0 +1,14 @@
+node_modules/
+dist/
+test-results/
+playwright-report/
+*.keystore
+*.jks
+keystore.properties
+android/app/release/
+android/.gradle/
+android/build/
+android/app/build/
+android/local.properties
+android/capacitor-cordova-android-plugins/build/
+.DS_Store
