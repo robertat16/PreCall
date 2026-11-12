@@ -7,7 +7,6 @@ import {
   frameRmsDb,
   meanDb,
   median,
-  percentile,
   powToDb,
   removeDc,
   spectralFlatness,
@@ -218,8 +217,8 @@ export function detectClicks(x: Float32Array, sr: number): number {
     // local robust scale from a wider neighbourhood
     const a = Math.max(0, start - win * 2);
     const b = Math.min(d.length, start + win * 3);
-    const slice = Array.from(d.subarray(a, b));
-    const scale = percentile(slice, 75) + 1e-7;
+    const slice = d.slice(a, b).sort();
+    const scale = slice[Math.floor(0.75 * (slice.length - 1))] + 1e-7;
     for (let i = start; i < start + win; i++) {
       if (d[i] > 0.02 && d[i] > scale * 25 && i - lastClick > refractory) {
         clicks++;
@@ -285,7 +284,7 @@ export function analyzeMicTest(input: AnalysisInput): MicReport {
   const settle = Math.round(250 / FRAME_MS);
   const quietFramesAll = frameRmsDb(quiet, frameLen);
   const quietFrames = quietFramesAll.length > settle * 2 ? quietFramesAll.subarray(settle) : quietFramesAll;
-  const noiseFloorDb = Math.max(-120, median(quietFrames));
+  const noiseFloorDb = quietFrames.length ? Math.max(-120, median(quietFrames)) : -120;
 
   const speechFrames = frameRmsDb(speech, frameLen);
   const thresh = Math.max(noiseFloorDb + 9, -62);
@@ -370,7 +369,8 @@ export function analyzeMicTest(input: AnalysisInput): MicReport {
     }
     score -= pen;
     if (pen >= 8 || !voiceDetected) issues.push({ weight: pen || 50, text: detail });
-    metrics.push({ id: 'level', label: 'Voice level', value: isFinite(speechLevelDb) ? `${speechLevelDb.toFixed(0)} dBFS` : '—', status, detail, tip });
+    const word = !voiceDetected ? 'Not heard' : speechLevelDb < -45 ? 'Very quiet' : speechLevelDb < -36 ? 'Quiet' : speechLevelDb < -30 ? 'A bit quiet' : status === 'fair' ? 'Very loud' : 'Healthy';
+    metrics.push({ id: 'level', label: 'Voice level', value: isFinite(speechLevelDb) && voiceDetected ? `${word} · ${speechLevelDb.toFixed(0)} dB` : word, status, detail, tip });
   }
 
   // Distortion / clipping
@@ -430,15 +430,17 @@ export function analyzeMicTest(input: AnalysisInput): MicReport {
     score -= pen;
     if (noisePen >= 13) issues.push({ weight: noisePen, text: nDetail });
     if (snrPen >= 13) issues.push({ weight: snrPen, text: sDetail });
-    metrics.push({ id: 'noise', label: 'Background noise', value: noiseFloorDb <= -100 ? 'Silent' : `${noiseFloorDb.toFixed(0)} dBFS`, status: nStatus, detail: nDetail, tip: nTip });
-    metrics.push({ id: 'snr', label: 'Voice vs. noise', value: voiceDetected && isFinite(snrDb) ? `${snrDb.toFixed(0)} dB` : '—', status: sStatus, detail: sDetail, tip: sTip });
+    const nWord = nStatus === 'great' ? 'Very quiet' : nStatus === 'good' ? 'Low' : nStatus === 'fair' ? 'Noticeable' : 'Loud';
+    const sWord = sStatus === 'great' ? 'Excellent' : sStatus === 'good' ? 'Good' : sStatus === 'fair' ? 'Weak' : 'Poor';
+    metrics.push({ id: 'noise', label: 'Background noise', value: noiseFloorDb <= -100 ? 'Silent' : `${nWord} · ${noiseFloorDb.toFixed(0)} dB`, status: nStatus, detail: nDetail, tip: nTip });
+    metrics.push({ id: 'snr', label: 'Voice vs. noise', value: voiceDetected && isFinite(snrDb) ? `${sWord} · ${snrDb.toFixed(0)} dB` : '—', status: sStatus, detail: sDetail, tip: sTip });
   }
 
   // Bandwidth / clarity
   {
     const map: Record<BandwidthClass, { status: Status; pen: number; value: string; detail: string; tip?: string }> = {
       narrowband: {
-        status: 'poor', pen: 24, value: `Narrowband · ${formatHz(bandwidthHz)}`,
+        status: 'poor', pen: 24, value: `Phone-line · ${formatHz(bandwidthHz)}`,
         detail: 'Old-phone-line quality. This usually means a Bluetooth headset has dropped into its low-quality “hands-free” mic mode.',
         tip: 'Bluetooth headsets often sound like this when the mic is in use. Try a wired headset or USB mic, a headset with LE Audio or a USB dongle, or the phone’s built-in mic.',
       },
@@ -447,7 +449,7 @@ export function analyzeMicTest(input: AnalysisInput): MicReport {
         detail: 'Clear “HD voice” quality, typical of good Bluetooth headsets.',
       },
       superwideband: {
-        status: 'great', pen: 2, value: `Super-wideband · ${formatHz(bandwidthHz)}`,
+        status: 'great', pen: 2, value: `Crisp · ${formatHz(bandwidthHz)}`,
         detail: 'Crisp and detailed. Better than most call apps will even transmit.',
       },
       fullband: {
@@ -458,9 +460,9 @@ export function analyzeMicTest(input: AnalysisInput): MicReport {
     const m = map[bandwidthClass];
     if (voiceDetected) {
       score -= m.pen;
-      if (m.pen >= 20) issues.push({ weight: m.pen, text: 'Narrowband audio: you’ll sound like an old phone line.' });
+      if (m.pen >= 20) issues.push({ weight: m.pen, text: 'Your mic sounds like an old phone line (narrowband audio).' });
     }
-    metrics.push({ id: 'clarity', label: 'Clarity (bandwidth)', value: voiceDetected ? m.value : '—', status: voiceDetected ? m.status : 'fair', detail: voiceDetected ? m.detail : 'Needs a voice sample to measure.', tip: voiceDetected ? m.tip : undefined });
+    metrics.push({ id: 'clarity', label: 'Clarity', value: voiceDetected ? m.value : '—', status: voiceDetected ? m.status : 'fair', detail: voiceDetected ? m.detail : 'Needs a voice sample to measure.', tip: voiceDetected ? m.tip : undefined });
   }
 
   // Tone balance
@@ -551,6 +553,8 @@ export function analyzeMicTest(input: AnalysisInput): MicReport {
   if (Math.abs(dcOffset) > 0.05) score -= 3;
 
   score = Math.round(Math.max(0, Math.min(100, score)));
+  // "Excellent" means nothing needs attention.
+  if (metrics.some((m) => m.status === 'fair' || m.status === 'poor')) score = Math.min(score, 89);
   // Narrowband speech is a hard ceiling: it is intelligible but never "good".
   if (voiceDetected && bandwidthClass === 'narrowband') score = Math.min(score, 66);
   if (!voiceDetected) score = Math.min(score, 25);

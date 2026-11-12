@@ -107,7 +107,7 @@ test('speaker tones and sweep', async ({ page }) => {
   await page.getByRole('button', { name: 'Start sweep' }).click();
   await page.waitForTimeout(1500);
   await page.getByRole('button', { name: 'I can’t hear it' }).click();
-  await expect(page.getByText(/Stopped at/)).toBeVisible();
+  await expect(page.getByText(/faded out at/)).toBeVisible();
   await shot(page, '21-speaker-sweep');
   expect(errors).toEqual([]);
 });

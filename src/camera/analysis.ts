@@ -247,6 +247,7 @@ export function analyzeCamera(input: {
   }
 
   score = Math.round(Math.max(0, Math.min(100, score)));
+  if (metrics.some((m) => m.status === 'fair' || m.status === 'poor')) score = Math.min(score, 89);
   issues.sort((a, b) => b.w - a.w);
   let headline: string;
   if (width === 0) headline = 'No video';
@@ -254,6 +255,11 @@ export function analyzeCamera(input: {
   else if (score >= 75) headline = 'Looking good';
   else if (score >= 60) headline = 'Watchable, could be better';
   else headline = 'Fix this before your call';
-  const summary = issues.length ? issues.slice(0, 2).map((i) => i.t).join(' ') : 'Your camera is call-ready.';
+  const tips = metrics.filter((m) => m.status !== 'great').length;
+  const summary = issues.length
+    ? issues.slice(0, 2).map((i) => i.t).join(' ')
+    : tips
+      ? `Your camera is call-ready. ${tips === 1 ? 'One small tip' : `${tips} small tips`} below.`
+      : 'Your camera is call-ready.';
   return { score, grade: gradeFor(score), headline, summary, metrics, width, height, fps, stats: s, facing: input.facing };
 }

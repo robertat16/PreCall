@@ -1,9 +1,9 @@
 import { analyzeEchoLeak, analyzeMicTest, type EchoReport, type MicReport } from '../audio/analysis';
-import { listAudioInputs, MicSession, playEchoProbe, playSamples, playbackGain, type Playback } from '../audio/engine';
-import { isNative, nativeRouteOptions, useRoute, type RouteKind } from '../native/audioRoute';
+import { listAudioInputs, MicError, MicSession, playEchoProbe, playSamples, playbackGain, type Playback } from '../audio/engine';
+import { isNative, nativeRouteOptions, openAppSettings, requestBluetoothPermission, useRoute, type RouteKind } from '../native/audioRoute';
 import { getSettings, nextPrompt, setSettings } from '../store';
 import { metricList, notice, scoreRing, scoreStatus, spectrumChart, toggle, toneBars, waveformCanvas } from '../ui/components';
-import { clear, h, sleep } from '../ui/dom';
+import { clear, h, sleep, throwIfAborted, toast } from '../ui/dom';
 import { icon } from '../ui/icons';
 
 export const QUIET_SECONDS = 3;
@@ -25,8 +25,12 @@ export function inputSettingsCard(onChange?: () => void): HTMLElement {
         const sel = h('select', { class: 'input', 'aria-label': 'Microphone' }) as HTMLSelectElement;
         for (const o of opts) sel.appendChild(h('option', { value: o.route }, `${o.label} · ${o.sub}`));
         sel.value = opts.some((o) => o.route === s.route) ? s.route : 'default';
-        sel.addEventListener('change', () => {
-          setSettings({ route: sel.value as RouteKind });
+        sel.addEventListener('change', async () => {
+          const route = sel.value as RouteKind;
+          if (route === 'bluetooth' && !(await requestBluetoothPermission())) {
+            toast('Allow “Nearby devices” so PreCall can use your Bluetooth headset’s mic.');
+          }
+          setSettings({ route });
           onChange?.();
         });
         selectWrap.appendChild(sel);
@@ -61,14 +65,41 @@ export function inputSettingsCard(onChange?: () => void): HTMLElement {
   return card;
 }
 
-export async function openConfiguredMic(): Promise<MicSession> {
+let routeGen = 0;
+
+/** Opens the mic the user picked. Native: routes audio first; returns the route claim to release later. */
+export async function openConfiguredMic(signal?: AbortSignal): Promise<MicSession> {
   const s = getSettings();
-  if (isNative()) await useRoute(s.route);
-  return MicSession.open({ processing: s.processing, deviceId: s.deviceId || undefined });
+  const my = ++routeGen;
+  if (isNative()) {
+    const ok = await useRoute(s.route);
+    if (!ok && s.route !== 'default') {
+      toast('Couldn’t switch to that mic. Using the automatic choice instead.');
+      setSettings({ route: 'default' });
+      await useRoute('default');
+    }
+  }
+  let mic: MicSession | null = null;
+  try {
+    throwIfAborted(signal);
+    mic = await MicSession.open({ processing: s.processing, deviceId: s.deviceId || undefined });
+    if (signal?.aborted || my !== routeGen) throw new DOMException('Aborted', 'AbortError');
+    return mic;
+  } catch (e) {
+    mic?.close();
+    await releaseRoute(my);
+    throw e;
+  }
 }
 
-export async function releaseRoute(): Promise<void> {
+/** Restore normal audio routing, unless a newer test has claimed the route since. */
+export async function releaseRoute(claim?: number): Promise<void> {
+  if (claim !== undefined && claim !== routeGen) return;
   if (isNative()) await useRoute('default');
+}
+
+export function currentRouteClaim(): number {
+  return routeGen;
 }
 
 export interface MicTestResult {
@@ -103,7 +134,8 @@ function orbEl(kind: 'quiet' | 'speak') {
  * Optionally runs the echo-leak probe afterwards.
  */
 export async function runMicCapture(stage: HTMLElement, signal: AbortSignal, opts: { echo?: boolean; stepLabel?: (i: number) => HTMLElement } = {}): Promise<MicTestResult> {
-  const mic = await openConfiguredMic();
+  const mic = await openConfiguredMic(signal);
+  const claim = currentRouteClaim();
   let raf = 0;
   try {
     const live = (fn: (db: number) => void) => {
@@ -161,12 +193,14 @@ export async function runMicCapture(stage: HTMLElement, signal: AbortSignal, opt
     clear(stage);
     stage.append(h('div', { class: 'countdown' }, 'ANALYZING'), h('h2', null, 'Crunching the numbers…'), h('p', null, 'Levels, noise, clarity, tone, hum, static and dropouts.'));
     await sleep(50, signal);
+    throwIfAborted(signal);
     const report = analyzeMicTest({ quiet, speech, sampleRate: mic.sampleRate });
+    throwIfAborted(signal);
     return { report, speech, sampleRate: mic.sampleRate, device: mic.label, processing: mic.processing, echo };
   } finally {
     cancelAnimationFrame(raf);
     mic.close();
-    await releaseRoute();
+    await releaseRoute(claim);
   }
 }
 
@@ -216,7 +250,7 @@ export function micReportView(r: MicReport, extra?: { echo?: EchoReport; device?
         scoreRing(r.score, r.grade),
         h('h2', null, r.headline),
         h('p', null, r.summary)),
-      extra?.device ? h('div', { class: 'footer-note' }, `${extra.device}${extra.processing ? ' · call processing on' : ' · raw mic'}`) : null),
+      extra?.device ? h('div', { class: 'footer-note' }, `${extra.device}${extra.processing ? ' · call processing on' : ' · call processing off'}`) : null),
   );
   return wrap;
 }
@@ -230,17 +264,19 @@ export function micDetailsView(r: MicReport, echo?: EchoReport): HTMLElement {
   wrap.appendChild(h('div', { class: 'card tight' }, h('h3', { style: 'margin:4px 2px 4px' }, 'Breakdown'), h('div', { class: 'small muted', style: 'margin:0 2px 6px' }, 'Tap any row for details and fixes.'), metricList(ms)));
   if (r.voiceDetected) {
     wrap.appendChild(h('div', { class: 'card' }, h('h3', null, 'Tone balance'), h('div', { class: 'small muted', style: 'margin-bottom:12px' }, `${r.tone.label}. Compared with a typical natural voice.`), toneBars(r.tone)));
-    wrap.appendChild(h('div', { class: 'card' }, h('h3', null, 'Frequency spectrum'), h('div', { class: 'small muted', style: 'margin-bottom:12px' }, `Your mic delivers up to ${r.bandwidthHz >= 1000 ? (r.bandwidthHz / 1000).toFixed(1) + ' kHz' : Math.round(r.bandwidthHz) + ' Hz'}. The shaded band is where speech intelligibility lives.`), spectrumChart(r.spectrum, r.sampleRate)));
+    wrap.appendChild(h('div', { class: 'card' }, h('h3', null, 'Frequency spectrum'), h('div', { class: 'small muted', style: 'margin-bottom:12px' }, `Your mic delivers up to ${(Number(r.bandwidthHz) / 1000).toFixed(1)} kHz. The shaded band is where speech intelligibility lives.`), spectrumChart(r.spectrum, r.sampleRate)));
   }
+  const num = (v: unknown, d = 1, u = 'dBFS') => (typeof v === 'number' && Number.isFinite(v) ? `${v.toFixed(d)} ${u}` : '—');
   const dl = h('dl', { class: 'kv' },
-    h('dt', null, 'Speech level'), h('dd', null, isFinite(r.speechLevelDb) ? `${r.speechLevelDb.toFixed(1)} dBFS` : '—'),
-    h('dt', null, 'Peak'), h('dd', null, `${r.peakDb.toFixed(1)} dBFS`),
-    h('dt', null, 'Noise floor'), h('dd', null, `${r.noiseFloorDb.toFixed(1)} dBFS`),
-    h('dt', null, 'Signal-to-noise'), h('dd', null, r.voiceDetected ? `${r.snrDb.toFixed(1)} dB` : '—'),
-    h('dt', null, 'Bandwidth'), h('dd', null, `${Math.round(r.bandwidthHz)} Hz`),
-    h('dt', null, 'Sample rate'), h('dd', null, `${r.sampleRate} Hz`),
+    h('dt', null, 'Speech level'), h('dd', null, num(r.speechLevelDb)),
+    h('dt', null, 'Peak'), h('dd', null, num(r.peakDb)),
+    h('dt', null, 'Noise floor'), h('dd', null, num(r.noiseFloorDb)),
+    h('dt', null, 'Signal-to-noise'), h('dd', null, r.voiceDetected ? num(r.snrDb, 1, 'dB') : '—'),
+    h('dt', null, 'Bandwidth'), h('dd', null, num(r.bandwidthHz, 0, 'Hz')),
+    h('dt', null, 'Sample rate'), h('dd', null, num(r.sampleRate, 0, 'Hz')),
   );
-  wrap.appendChild(h('div', { class: 'card' }, h('h3', null, 'Technical readout'), dl));
+  const det = h('details', { class: 'card tech' }, h('summary', null, 'Technical details'), h('div', { style: 'height:12px' }), dl);
+  wrap.appendChild(det);
   return wrap;
 }
 
@@ -250,10 +286,28 @@ export function echoStatusScore(e?: EchoReport): number | undefined {
 }
 
 export function micErrorView(err: unknown, onRetry: () => void): HTMLElement {
-  const msg = (err as Error)?.message || 'Something went wrong with the microphone.';
+  return mediaErrorView(err, onRetry, 'Something went wrong with the microphone.');
+}
+
+/** Error card with "Open settings" when permission was denied (native only). */
+export function mediaErrorView(err: unknown, onRetry: () => void, fallback = 'Something went wrong.'): HTMLElement {
+  const msg = (err as Error)?.message || fallback;
+  const denied = (err as MicError)?.kind === 'denied';
   return h('div', { style: 'display:flex;flex-direction:column;gap:12px' },
     notice('error', msg),
+    denied && isNative() ? h('button', { class: 'btn primary block', onclick: () => void openAppSettings() }, icon('shield'), 'Open settings') : null,
     h('button', { class: 'btn secondary block', onclick: onRetry }, icon('redo'), 'Try again'));
 }
 
 export { scoreStatus };
+
+/** Shown when narrowband audio is detected: explains Bluetooth hands-free mode and offers a one-tap retest. */
+export function narrowbandCard(onRetestPhoneMic: () => void): HTMLElement {
+  return h('div', { class: 'card', style: 'border-color:rgba(255,107,122,.35);background:rgba(255,107,122,.05)' },
+    h('div', { class: 'eyebrow', style: 'color:var(--poor)' }, 'Bluetooth hands-free mode'),
+    h('h3', { style: 'margin-top:8px' }, 'Why you sound like a phone line'),
+    h('p', { class: 'small muted', style: 'margin:0 0 14px' }, 'Most Bluetooth headsets switch to a low-quality “hands-free” mode as soon as their mic turns on. Music sounds fine, but your voice is squeezed into a narrow band. The usual fix is to keep the headset for listening and use a different mic.'),
+    isNative()
+      ? h('button', { class: 'btn primary block', onclick: onRetestPhoneMic }, icon('redo'), 'Retest with phone mic')
+      : h('p', { class: 'small', style: 'margin:0' }, 'Try the test again with a wired headset or your device’s built-in mic to hear the difference.'));
+}

@@ -41,7 +41,7 @@ await splash(480, 320, `${res}/drawable/splash.png`);
 
 // Play Store assets
 mkdirSync('store/graphics', { recursive: true });
-await sharp(icon, { density: 300 }).resize(512, 512).flatten({ background: BG }).png().toFile('store/graphics/icon-512.png');
+await sharp(icon, { density: 300 }).resize(512, 512).flatten({ background: BG }).ensureAlpha().png().toFile('store/graphics/icon-512.png');
 const feature = Buffer.from(`<svg xmlns="http://www.w3.org/2000/svg" width="1024" height="500" viewBox="0 0 1024 500">
   <defs>
     <radialGradient id="a" cx="85%" cy="0%" r="80%"><stop offset="0" stop-color="#8b7cff" stop-opacity=".35"/><stop offset="1" stop-color="#8b7cff" stop-opacity="0"/></radialGradient>
@@ -63,5 +63,5 @@ const feature = Buffer.from(`<svg xmlns="http://www.w3.org/2000/svg" width="1024
   <text x="72" y="275" font-family="Inter, DejaVu Sans, sans-serif" font-size="32" fill="#9aa7ba">Mic &amp; camera test for calls</text>
   <text x="72" y="330" font-family="DejaVu Sans Mono, monospace" font-size="18" letter-spacing="3" fill="#5cf2e3">NOISE · CLARITY · TONE · ECHO · VIDEO</text>
 </svg>`);
-await sharp(feature).png().toFile('store/graphics/feature-graphic-1024x500.png');
+await sharp(feature).flatten({ background: '#070A10' }).removeAlpha().png().toFile('store/graphics/feature-graphic-1024x500.png');
 console.log('icons done');

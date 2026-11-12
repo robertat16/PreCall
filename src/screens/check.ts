@@ -5,8 +5,9 @@ import { scoreRing, scoreStatus, topbar } from '../ui/components';
 import { clear, h, isAbort } from '../ui/dom';
 import { gradeFor } from '../audio/analysis';
 import { icon, type IconName } from '../ui/icons';
-import { analyzeCurrentCamera, cameraReportView, cameraView } from './camera';
-import { echoStatusScore, inputSettingsCard, micDetailsView, micErrorView, micReportView, playbackCard, runMicCapture, type MicTestResult } from './micflow';
+import { analyzeCurrentCamera, cameraReportView, cameraView, captureThumb } from './camera';
+import { echoStatusScore, inputSettingsCard, micDetailsView, micErrorView, micReportView, narrowbandCard, playbackCard, runMicCapture, type MicTestResult } from './micflow';
+import { setSettings } from '../store';
 
 export function overallScore(mic: number, echo?: number, camera?: number): number {
   let w = 0.65;
@@ -19,6 +20,13 @@ export function overallScore(mic: number, echo?: number, camera?: number): numbe
   return Math.round(Math.min(s / w, cap));
 }
 
+function summaryText(mic: MicTestResult, camera: CameraReport | undefined, total: number): string {
+  if (!mic.report.voiceDetected) return 'Check your mic selection and try again.';
+  if (total >= 90) return camera ? 'Your mic, audio and camera are all call-ready.' : 'Your mic and audio are call-ready.';
+  if (camera && camera.score < mic.report.score) return `Biggest win: your camera. ${camera.summary}`;
+  return mic.report.summary;
+}
+
 export const checkScreen: Screen = ({ root, back, nav, signal }) => {
   const body = h('main', { class: 'screen' });
   root.append(topbar('Full check', back), body);
@@ -26,7 +34,10 @@ export const checkScreen: Screen = ({ root, back, nav, signal }) => {
   let cleanupPlayback: (() => void) | null = null;
   const cam = cameraView({ hud: false });
 
-  const steps = (i: number) => h('div', { class: 'steps', 'aria-label': `Step ${Math.min(i + 1, 3)} of 3` }, ...[0, 1, 2].map((k) => h('span', { class: k < i ? 'done' : k === i ? 'on' : '' })));
+  const steps = (i: number) =>
+    h('div', { class: 'steps-wrap', 'aria-label': i >= 0 ? `Step ${i + 1} of 3` : 'Three steps: mic, echo, camera' },
+      h('div', { class: 'steps' }, ...[0, 1, 2].map((k) => h('span', { class: k < i ? 'done' : k === i ? 'on' : '' }))),
+      h('div', { class: 'steps-labels', 'aria-hidden': 'true' }, ...['Mic', 'Echo', 'Camera'].map((l, k) => h('span', { class: k === i ? 'on' : '' }, l))));
 
   const intro = () => {
     ac?.abort();
@@ -39,7 +50,8 @@ export const checkScreen: Screen = ({ root, back, nav, signal }) => {
         h('div', { class: 'pulse-orb' }, h('div', { class: 'halo' }), h('div', { class: 'core' }, icon('spark'))),
         h('h2', null, 'One-minute call check'),
         h('p', null, 'Mic quality, echo, and camera, all in one pass. Put your headset on and get in your call spot.'),
-        h('button', { class: 'btn primary block', onclick: () => void run() }, icon('play'), 'Begin')),
+        h('button', { class: 'btn primary block', onclick: () => void run() }, icon('play'), 'Begin'),
+        h('div', { class: 'small muted' }, 'You’ll be asked for mic and camera access. Nothing leaves your phone.')),
       inputSettingsCard(),
     );
   };
@@ -67,32 +79,34 @@ export const checkScreen: Screen = ({ root, back, nav, signal }) => {
     // Camera
     let camera: CameraReport | undefined;
     let cameraError = '';
+    let thumb: string | undefined;
     clear(stage);
     const status = h('p', null, 'Center your face in the outline.');
     stage.append(steps(2), h('div', { class: 'countdown' }, 'CAMERA'), cam.el, status);
-    const skip = h('button', { class: 'btn ghost block', onclick: () => ac?.abort() }, 'Skip camera');
-    cancel.replaceWith(skip);
     const camAc = new AbortController();
     sig.addEventListener('abort', () => camAc.abort(), { once: true });
+    const skip = h('button', { class: 'btn ghost block', onclick: () => camAc.abort() }, 'Skip camera');
+    cancel.replaceWith(skip);
     try {
       await cam.start('user');
       status.textContent = 'Hold still for a few seconds…';
       camera = await analyzeCurrentCamera(cam, 3000, camAc.signal);
+      thumb = captureThumb(cam);
     } catch (e) {
       if (!isAbort(e)) cameraError = (e as Error).message;
-      if (signal.aborted) return;
     } finally {
       cam.stop();
     }
+    if (sig.aborted) return;
 
     const echoScore = echoStatusScore(mic.echo);
     const total = mic.report.voiceDetected ? overallScore(mic.report.score, echoScore, camera?.score) : mic.report.score;
     const entry = addHistory({ kind: 'full', device: mic.device, score: total, mic: mic.report, echo: mic.echo, camera, processing: mic.processing });
-    showSummary(mic, camera, total, cameraError, entry.id);
+    showSummary(mic, camera, total, cameraError, entry.id, thumb);
     signal.removeEventListener('abort', onLeave);
   };
 
-  const showSummary = (mic: MicTestResult, camera: CameraReport | undefined, total: number, cameraError: string, id: string) => {
+  const showSummary = (mic: MicTestResult, camera: CameraReport | undefined, total: number, cameraError: string, id: string, thumb?: string) => {
     clear(body);
     const st = scoreStatus(total);
     const headline = !mic.report.voiceDetected ? 'We couldn’t hear you' : total >= 90 ? 'You’re ready' : total >= 75 ? 'Good to go' : total >= 60 ? 'Usable, with fixes' : 'Not ready yet';
@@ -104,16 +118,17 @@ export const checkScreen: Screen = ({ root, back, nav, signal }) => {
     const pb = playbackCard(mic.speech, mic.sampleRate);
     cleanupPlayback = pb.stop;
     micDetails.append(micDetailsView(mic.report, mic.echo));
-    if (camera) camDetails.append(cameraReportView(camera));
+    if (camera) camDetails.append(cameraReportView(camera, thumb));
 
     body.append(
       h('div', { class: 'card' },
         h('div', { class: 'score-wrap' },
           scoreRing(total, mic.report.voiceDetected ? gradeFor(total) : 'No voice'),
           h('h2', null, headline),
-          h('p', null, mic.report.voiceDetected ? mic.report.summary : 'Check your mic selection and try again.')),
+          h('p', null, summaryText(mic, camera, total))),
         h('div', { class: 'footer-note' }, mic.device)),
       pb.el,
+      ...(mic.report.voiceDetected && mic.report.bandwidthClass === 'narrowband' ? [narrowbandCard(() => { setSettings({ route: 'builtin' }); void run(); })] : []),
       h('div', { class: 'section-title' }, 'Results'),
       row('mic', 'Microphone', mic.report.headline, mic.report.score, () => toggleBox(micDetails)),
       micDetails,

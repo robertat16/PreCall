@@ -1,0 +1,8 @@
+First release of PreCall:
+• One-minute full check of mic, echo and camera
+• Echo test call with a 0–100 score and playback
+• Detects Bluetooth "hands-free" (phone-line) audio
+• Compare two headsets side by side
+• Live mic meter, speaker and camera tests
+• 10-second video test call
+• Private: everything stays on your phone

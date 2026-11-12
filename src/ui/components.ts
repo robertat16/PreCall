@@ -82,20 +82,24 @@ export function metricList(metrics: Metric[]): HTMLElement {
 }
 
 export function toneBars(t: ToneBalance): HTMLElement {
-  const bar = (label: string, db: number) => {
-    const clamped = Math.max(-18, Math.min(18, db));
-    const pct = (Math.abs(clamped) / 18) * 50;
-    const style = clamped >= 0 ? `bottom:50%;height:${Math.max(2, pct)}%` : `top:50%;height:${Math.max(2, pct)}%`;
-    return h(
-      'div',
-      { class: 'tb' },
-      h('div', { class: 'track' }, h('div', { class: 'mid' }), h('div', { class: 'bar', style })),
-      h('div', { class: 'tl' }, label),
-      h('div', { class: 'tv' }, `${db >= 0 ? '+' : ''}${db.toFixed(0)} dB`),
-    );
+  const fin = (v: unknown) => (typeof v === 'number' && Number.isFinite(v) ? v : 0);
+  t = { ...t, bassDb: fin(t.bassDb), midDb: fin(t.midDb), trebleDb: fin(t.trebleDb) };
+  const RANGE = 18;
+  const pos = (db: number) => 50 + (Math.max(-RANGE, Math.min(RANGE, db)) / RANGE) * 50;
+  const row = (label: string, db: number, lo: number, hi: number, note: string) => {
+    const ok = db >= lo && db <= hi;
+    return h('div', { class: 'eq-row' },
+      h('div', { class: 'eq-l' }, label),
+      h('div', { class: 'eq-track' },
+        h('div', { class: 'eq-ok', style: `left:${pos(lo)}%;width:${pos(hi) - pos(lo)}%` }),
+        h('div', { class: 'eq-mid' }),
+        h('div', { class: `eq-dot ${ok ? '' : 'off'}`, style: `left:${pos(db)}%` })),
+      h('div', { class: 'eq-v' }, ok ? 'Natural' : note));
   };
-  return h('div', { class: 'tone', role: 'img', 'aria-label': `Tone: bass ${t.bassDb.toFixed(0)} dB, treble ${t.trebleDb.toFixed(0)} dB relative to mids` },
-    bar('Bass', t.bassDb), bar('Mids', t.midDb), bar('Treble', t.trebleDb));
+  return h('div', { class: 'eq', role: 'img', 'aria-label': `Tone: bass ${t.bassDb.toFixed(0)} dB and treble ${t.trebleDb.toFixed(0)} dB compared with a natural voice` },
+    row('Bass', t.bassDb, -11, 7, t.bassDb > 7 ? 'Boomy' : 'Thin'),
+    row('Treble', t.trebleDb, -9, 7, t.trebleDb > 7 ? 'Harsh' : 'Muffled'),
+    h('div', { class: 'eq-scale', 'aria-hidden': 'true' }, h('span', null, 'Less'), h('span', null, 'Natural'), h('span', null, 'More')));
 }
 
 export interface LevelMeter {
@@ -103,7 +107,7 @@ export interface LevelMeter {
   update(rmsDb: number, holdDb: number): void;
 }
 
-const METER_MIN = -66;
+const METER_MIN = -80;
 const METER_MAX = 0;
 const pctFor = (db: number) => Math.max(0, Math.min(100, ((db - METER_MIN) / (METER_MAX - METER_MIN)) * 100));
 
@@ -113,7 +117,8 @@ export function levelMeter(): LevelMeter {
   const hold = h('div', { class: 'hold' });
   const zone = h('div', { class: 'zone', style: `left:${pctFor(-30)}%;width:${pctFor(-12) - pctFor(-30)}%` });
   const bar = h('div', { class: 'meter', role: 'meter', 'aria-label': 'Input level', 'aria-valuemin': METER_MIN, 'aria-valuemax': METER_MAX }, zone, fill, hold);
-  const el = h('div', null, bar, h('div', { class: 'meter-scale', 'aria-hidden': 'true' }, h('span', null, '-60'), h('span', null, '-40'), h('span', null, '-20'), h('span', null, '0 dB')));
+  const zoneLabel = h('div', { class: 'zone-label', style: `left:${pctFor(-30)}%;width:${pctFor(-12) - pctFor(-30)}%` }, 'Voice target');
+  const el = h('div', null, h('div', { class: 'meter-wrap' }, zoneLabel, bar), h('div', { class: 'meter-scale', 'aria-hidden': 'true' }, h('span', null, '−80'), h('span', null, '−60'), h('span', null, '−40'), h('span', null, '−20'), h('span', null, '0 dB')));
   let smooth = METER_MIN;
   return {
     el,
@@ -276,21 +281,37 @@ export function liveSpectrum(canvas: HTMLCanvasElement, analyser: AnalyserNode, 
 export function waveformCanvas(samples: Float32Array, height = 64): { el: HTMLCanvasElement; setProgress(p: number): void } {
   const canvas = h('canvas', { class: 'viz', 'aria-hidden': 'true' }) as HTMLCanvasElement;
   let progress = -1;
+  let cols: Float32Array | null = null;
+  let colsFor = 0;
+  const columns = (n: number) => {
+    if (cols && colsFor === n) return cols;
+    const out = new Float32Array(n);
+    const per = Math.max(1, Math.floor(samples.length / n));
+    let peak = 0;
+    for (let c = 0; c < n; c++) {
+      let mx = 0;
+      const end = Math.min(samples.length, (c + 1) * per);
+      for (let i = c * per; i < end; i++) {
+        const a = Math.abs(samples[i]);
+        if (a > mx) mx = a;
+      }
+      out[c] = mx;
+      if (mx > peak) peak = mx;
+    }
+    if (peak > 0) for (let c = 0; c < n; c++) out[c] /= peak;
+    cols = out;
+    colsFor = n;
+    return out;
+  };
   const draw = () => {
     const g = fitCanvas(canvas, height);
     const W = canvas.width / Math.min(window.devicePixelRatio || 1, 3);
     g.clearRect(0, 0, W, height);
-    const cols = Math.max(1, Math.floor(W / 3));
-    const per = Math.max(1, Math.floor(samples.length / cols));
-    let peak = 0;
-    for (let i = 0; i < samples.length; i++) peak = Math.max(peak, Math.abs(samples[i]));
-    const scale = peak > 0 ? 1 / peak : 1;
-    for (let c = 0; c < cols; c++) {
-      let mx = 0;
-      for (let i = c * per; i < Math.min(samples.length, (c + 1) * per); i++) mx = Math.max(mx, Math.abs(samples[i]));
-      const bh = Math.max(1.5, mx * scale * (height - 6));
-      const played = progress >= 0 && c / cols <= progress;
-      g.fillStyle = played ? '#5cf2e3' : 'rgba(154,167,186,0.45)';
+    const n = Math.max(1, Math.floor(W / 3));
+    const cs = columns(n);
+    for (let c = 0; c < n; c++) {
+      const bh = Math.max(1.5, cs[c] * (height - 6));
+      g.fillStyle = progress >= 0 && c / n <= progress ? '#5cf2e3' : 'rgba(154,167,186,0.45)';
       g.fillRect(c * 3, (height - bh) / 2, 2, bh);
     }
   };

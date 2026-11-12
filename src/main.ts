@@ -6,13 +6,15 @@ import { aboutScreen } from './screens/about';
 import { callScreen } from './screens/call';
 import { cameraScreen } from './screens/camera';
 import { checkScreen } from './screens/check';
+import { compareScreen } from './screens/compare';
 import { historyScreen, reportScreen } from './screens/history';
 import { homeScreen } from './screens/home';
 import { micScreen } from './screens/mic';
 import { speakerScreen } from './screens/speaker';
 import { videoScreen } from './screens/video';
 import { clear } from './ui/dom';
-import { activeStreams } from './audio/engine';
+import { activeStreams, releaseStream } from './audio/engine';
+import { releaseRoute } from './screens/micflow';
 
 const routes: Record<string, Screen> = {
   '': homeScreen,
@@ -24,6 +26,7 @@ const routes: Record<string, Screen> = {
   video: videoScreen,
   history: historyScreen,
   report: reportScreen,
+  compare: compareScreen,
   about: aboutScreen,
 };
 
@@ -75,7 +78,11 @@ function render() {
 window.addEventListener('hashchange', render);
 // Stop media when the app is backgrounded (mic/camera must not stay open).
 document.addEventListener('visibilitychange', () => {
-  if (document.visibilityState === 'hidden' && activeStreams.size > 0) render();
+  if (document.visibilityState === 'hidden' && activeStreams.size > 0) {
+    [...activeStreams].forEach(releaseStream);
+    void releaseRoute();
+    render();
+  }
 });
 
 if (Capacitor.isNativePlatform()) {

@@ -1,5 +1,6 @@
 import { describeMediaError, releaseStream, trackStream } from '../audio/engine';
 import { analyzeFrame, averageStats, type FrameStats } from './analysis';
+import { sleep } from '../ui/dom';
 
 export type Facing = 'user' | 'environment';
 
@@ -97,11 +98,13 @@ export class CameraSampler {
   /** Collect frame stats for `ms` and return their average. */
   async gather(ms: number, signal?: AbortSignal): Promise<FrameStats | null> {
     this.collect = [];
-    await new Promise<void>((res, rej) => {
-      const t = setTimeout(res, ms);
-      signal?.addEventListener('abort', () => { clearTimeout(t); rej(new DOMException('Aborted', 'AbortError')); }, { once: true });
-    });
-    const list = this.collect;
+    try {
+      await sleep(ms, signal);
+    } catch (e) {
+      this.collect = null;
+      throw e;
+    }
+    const list = this.collect ?? [];
     this.collect = null;
     if (!list.length) return this.lastStats;
     return averageStats(list);

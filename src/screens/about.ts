@@ -12,11 +12,11 @@ export const aboutScreen: Screen = ({ root, back }) => {
     topbar('About & privacy', back),
     h('main', { class: 'screen' },
       h('div', { class: 'card center' },
-        h('div', { style: 'display:flex;justify-content:center;margin-bottom:8px' }, logo()),
+        h('div', { style: 'display:flex;justify-content:center;margin-bottom:8px' }, (() => { const l = logo(); l.classList.add('lg'); return l; })()),
         h('div', { style: 'font-family:var(--display);font-size:22px;font-weight:600' }, 'PreCall'),
         h('div', { class: 'small muted' }, `Mic & camera test · version ${__APP_VERSION__}`)),
       sec('Your privacy',
-        'PreCall works entirely on your device. Audio and video are processed locally in memory to measure quality and are never uploaded, shared or sent anywhere. PreCall has no accounts, no ads and no analytics, and it never connects to any server.',
+        'PreCall works entirely on your device. Audio and video are processed locally in memory to measure quality and are never uploaded, shared or sent anywhere. PreCall has no accounts, no ads and no analytics, and it never sends your audio, video or results anywhere.',
         'Test results (scores and measurements, not recordings) are saved on your phone so you can view your history. You can delete them any time from the History screen, or by clearing the app’s storage.',
         'Recordings for playback exist only until you leave the result screen.'),
       sec('Permissions',
@@ -26,7 +26,7 @@ export const aboutScreen: Screen = ({ root, back }) => {
         'Scores are guidance, not lab measurements. Phones and call apps process audio differently, so test with the same headset and position you’ll use on the call.'),
       sec('Open-source',
         'Fonts: Inter, Space Grotesk and JetBrains Mono, licensed under the SIL Open Font License 1.1. Built with Capacitor (MIT).'),
-      h('div', { class: 'footer-note' }, '© PreCall. Made for better calls.'),
+      h('div', { class: 'footer-note' }, `© ${new Date().getFullYear()} PreCall. Made for better calls.`),
     ),
   );
 };

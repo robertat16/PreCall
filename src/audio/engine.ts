@@ -175,19 +175,40 @@ export class MicSession {
     sink.connect(c.destination);
 
     const useWorklet = await loadWorklet(c);
+    if (signal?.aborted || this.closed) {
+      sink.disconnect();
+      throw new DOMException('Aborted', 'AbortError');
+    }
     return new Promise<Float32Array>((resolve, reject) => {
       let node: AudioNode;
       let finished = false;
       let raf = 0;
+      let watchdog = 0;
       const startedAt = performance.now();
+
+      const teardown = () => {
+        cancelAnimationFrame(raf);
+        clearInterval(watchdog);
+        signal?.removeEventListener('abort', onAbort);
+        this.track?.removeEventListener('ended', onAbort);
+        try { this.source.disconnect(node); } catch { /* already */ }
+        try { node.disconnect(); } catch { /* already */ }
+        try { sink.disconnect(); } catch { /* already */ }
+      };
+      const fail = (e: Error) => {
+        if (finished) return;
+        finished = true;
+        teardown();
+        reject(e);
+      };
+      const onAbort = () => fail(new DOMException('Aborted', 'AbortError'));
+      signal?.addEventListener('abort', onAbort, { once: true });
+      this.track?.addEventListener('ended', onAbort, { once: true });
 
       const finish = () => {
         if (finished) return;
         finished = true;
-        cancelAnimationFrame(raf);
-        try { this.source.disconnect(node); } catch { /* already */ }
-        try { node.disconnect(); } catch { /* already */ }
-        try { sink.disconnect(); } catch { /* already */ }
+        teardown();
         const out = new Float32Array(Math.min(total, target));
         let o = 0;
         for (const ch of chunks) {
@@ -221,29 +242,23 @@ export class MicSession {
       this.source.connect(node);
       node.connect(sink);
 
-      // Watchdog: if the audio thread never delivers (suspended context), fail clearly.
+      // Progress runs on animation frames; the watchdog runs on a timer so it still
+      // fires if animation frames are paused (e.g. the app was backgrounded).
       const tick = () => {
         if (finished) return;
-        const elapsed = (performance.now() - startedAt) / 1000;
         onProgress?.(Math.min(1, total / target));
-        if (signal?.aborted) {
-          finished = true;
-          try { this.source.disconnect(node); node.disconnect(); sink.disconnect(); } catch { /* ignore */ }
-          reject(new DOMException('Aborted', 'AbortError'));
-          return;
-        }
-        if (elapsed > seconds + 4 && total === 0) {
-          finished = true;
-          reject(new MicError('busy', 'The microphone isn’t delivering any audio. Another app may be holding it.'));
-          return;
-        }
-        if (elapsed > seconds + 6) {
-          finish();
-          return;
-        }
         raf = requestAnimationFrame(tick);
       };
       raf = requestAnimationFrame(tick);
+      watchdog = window.setInterval(() => {
+        if (finished) return;
+        const elapsed = (performance.now() - startedAt) / 1000;
+        if (elapsed > seconds + 4 && total === 0) {
+          fail(new MicError('busy', 'The microphone isn’t delivering any audio. Another app may be holding it.'));
+        } else if (elapsed > seconds + 6) {
+          finish();
+        }
+      }, 500);
     });
   }
 

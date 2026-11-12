@@ -2,9 +2,10 @@ import { analyzeCamera, type CameraReport } from '../camera/analysis';
 import { CameraSampler, openCamera, stopStream, type Facing } from '../camera/engine';
 import type { Screen } from '../router';
 import { addHistory } from '../store';
-import { chip, metricList, notice, scoreRing, topbar } from '../ui/components';
+import { chip, metricList, scoreRing, topbar } from '../ui/components';
 import { clear, h, isAbort, sleep } from '../ui/dom';
 import { icon } from '../ui/icons';
+import { mediaErrorView } from './micflow';
 
 export interface CamView {
   el: HTMLElement;
@@ -31,6 +32,7 @@ export function cameraView(opts: { hud?: boolean; withAudio?: boolean } = {}): C
   let facing: Facing = 'user';
   let timer = 0;
   let mirror = true;
+  let gen = 0;
 
   const updateHud = () => {
     if (!sampler || !video.videoWidth) return;
@@ -50,10 +52,16 @@ export function cameraView(opts: { hud?: boolean; withAudio?: boolean } = {}): C
     video,
     async start(f: Facing) {
       api.stop();
+      const my = ++gen;
       facing = f;
       placeholder.style.display = '';
       placeholder.textContent = 'Starting camera…';
-      stream = await openCamera(f, opts.withAudio);
+      const s = await openCamera(f, opts.withAudio);
+      if (my !== gen) {
+        stopStream(s);
+        throw new DOMException('Aborted', 'AbortError');
+      }
+      stream = s;
       video.srcObject = stream;
       video.classList.toggle('mirror', f === 'user' && mirror);
       try { await video.play(); } catch { /* autoplay handled by muted */ }
@@ -65,6 +73,7 @@ export function cameraView(opts: { hud?: boolean; withAudio?: boolean } = {}): C
     stream: () => stream,
     facing: () => facing,
     stop() {
+      gen++;
       clearInterval(timer);
       sampler?.stop();
       sampler = null;
@@ -97,9 +106,32 @@ export async function analyzeCurrentCamera(view: CamView, ms: number, signal?: A
   });
 }
 
-export function cameraReportView(r: CameraReport): HTMLElement {
+/** Grab the current frame as a small JPEG (kept in memory only, never saved). */
+export function captureThumb(view: CamView): string | undefined {
+  const v = view.video;
+  if (!v.videoWidth) return undefined;
+  const c = document.createElement('canvas');
+  const w = 480;
+  c.width = w;
+  c.height = Math.round((v.videoHeight / v.videoWidth) * w);
+  const g = c.getContext('2d');
+  if (!g) return undefined;
+  if (view.facing() === 'user') {
+    g.translate(w, 0);
+    g.scale(-1, 1);
+  }
+  g.drawImage(v, 0, 0, c.width, c.height);
+  try {
+    return c.toDataURL('image/jpeg', 0.8);
+  } catch {
+    return undefined;
+  }
+}
+
+export function cameraReportView(r: CameraReport, thumb?: string): HTMLElement {
   return h('div', { style: 'display:flex;flex-direction:column;gap:14px' },
-    h('div', { class: 'card' }, h('div', { class: 'score-wrap' }, scoreRing(r.score, r.grade), h('h2', null, r.headline), h('p', null, r.summary))),
+    h('div', { class: 'card' }, h('div', { class: 'score-wrap' }, scoreRing(r.score, r.grade), h('h2', null, r.headline), h('p', null, r.summary)),
+      thumb ? h('img', { class: 'thumb', src: thumb, alt: 'The frame that was analyzed', style: 'margin-top:14px' }) : null),
     h('div', { class: 'card tight' }, h('h3', { style: 'margin:4px 2px 4px' }, 'Breakdown'), h('div', { class: 'small muted', style: 'margin:0 2px 6px' }, 'Tap any row for details and fixes.'), metricList(r.metrics)));
 }
 
@@ -118,8 +150,9 @@ export const cameraScreen: Screen = ({ root, back, signal }) => {
     try {
       await view.start(facing);
     } catch (e) {
+      if (isAbort(e) || signal.aborted) return;
       clear(body);
-      body.append(notice('error', (e as Error).message), h('button', { class: 'btn secondary block', onclick: () => void live(facing) }, icon('redo'), 'Try again'));
+      body.append(mediaErrorView(e, () => void live(facing), 'Couldn’t start the camera.'));
       return;
     }
     flip.addEventListener('click', () => void live(view.facing() === 'user' ? 'environment' : 'user').catch(() => undefined));
@@ -129,10 +162,11 @@ export const cameraScreen: Screen = ({ root, back, signal }) => {
       status.textContent = 'Hold still… analyzing lighting, focus and color.';
       try {
         const r = await analyzeCurrentCamera(view, 2500, busy.signal);
+        const thumb = captureThumb(view);
         addHistory({ kind: 'camera', device: view.facing() === 'user' ? 'Front camera' : 'Back camera', score: r.score, camera: r });
         view.stop();
         clear(body);
-        body.append(cameraReportView(r), h('div', { class: 'btn-row' },
+        body.append(cameraReportView(r, thumb), h('div', { class: 'btn-row' },
           h('button', { class: 'btn secondary', onclick: () => void live(r.facing as Facing) }, icon('redo'), 'Test again'),
           h('button', { class: 'btn secondary', onclick: back }, icon('check'), 'Done')));
         window.scrollTo({ top: 0 });

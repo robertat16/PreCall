@@ -1,9 +1,9 @@
-import { describeMediaError } from '../audio/engine';
 import { pickRecorderMime, type Facing } from '../camera/engine';
 import type { Screen } from '../router';
-import { chip, levelMeter, notice, topbar } from '../ui/components';
+import { chip, levelMeter, topbar } from '../ui/components';
 import { clear, h, isAbort, sleep } from '../ui/dom';
 import { icon } from '../ui/icons';
+import { mediaErrorView } from './micflow';
 import { cameraView } from './camera';
 import { resumeAudio } from '../audio/engine';
 
@@ -64,8 +64,9 @@ export const videoScreen: Screen = ({ root, back, signal }) => {
     try {
       await view.start(facing);
     } catch (e) {
+      if (isAbort(e) || signal.aborted) return;
       clear(body);
-      body.append(notice('error', (e as Error).message || describeMediaError(e, 'camera').message), h('button', { class: 'btn secondary block', onclick: () => void live(facing) }, icon('redo'), 'Try again'));
+      body.append(mediaErrorView(e, () => void live(facing), 'Couldn’t start the camera.'));
       return;
     }
     const stream = view.stream()!;
@@ -121,9 +122,32 @@ export const videoScreen: Screen = ({ root, back, signal }) => {
     if (url) URL.revokeObjectURL(url);
     url = URL.createObjectURL(blob);
     clear(body);
-    const v = h('video', { controls: true, playsinline: true, src: url, class: facing === 'user' ? 'mirror' : '' }) as HTMLVideoElement;
+    const v = h('video', { playsinline: true, src: url, class: facing === 'user' ? 'mirror' : '' }) as HTMLVideoElement;
+    const playBtn = h('button', { class: 'icon-btn', 'aria-label': 'Play' }, icon('play'));
+    const fill = h('div');
+    const bar = h('div', { class: 'bar', role: 'slider', 'aria-label': 'Playback position', 'aria-valuemin': 0, 'aria-valuemax': 100 }, fill);
+    const time = h('span', { class: 't' }, '0:00');
+    const fmt = (t: number) => `${Math.floor(t / 60)}:${String(Math.floor(t % 60)).padStart(2, '0')}`;
+    const dur = () => (isFinite(v.duration) && v.duration > 0 ? v.duration : CLIP_SECONDS);
+    const sync = () => {
+      const p = Math.min(1, v.currentTime / dur());
+      fill.style.width = `${p * 100}%`;
+      bar.setAttribute('aria-valuenow', String(Math.round(p * 100)));
+      time.textContent = `${fmt(v.currentTime)} / ${fmt(dur())}`;
+      playBtn.replaceChildren(icon(v.paused ? 'play' : 'pause'));
+      playBtn.setAttribute('aria-label', v.paused ? 'Play' : 'Pause');
+    };
+    const toggle = () => { if (v.paused) void v.play().catch(() => undefined); else v.pause(); };
+    playBtn.addEventListener('click', toggle);
+    v.addEventListener('click', toggle);
+    ['timeupdate', 'play', 'pause', 'ended', 'loadedmetadata'].forEach((ev) => v.addEventListener(ev, sync));
+    bar.addEventListener('click', (e) => {
+      const rect = bar.getBoundingClientRect();
+      v.currentTime = Math.max(0, Math.min(1, (e.clientX - rect.left) / rect.width)) * dur();
+    });
     body.append(
       h('div', { class: 'cam' }, v),
+      h('div', { class: 'card tight vctl' }, playBtn, bar, time),
       h('div', { class: 'card' },
         h('h3', null, 'Watch it back'),
         h('div', { class: 'small muted' }, 'Check: Are you well lit and centered? Is your voice clear and in sync? Any echo, hum or background noise? For a full audio breakdown, run the Test call.')),
