@@ -51,7 +51,9 @@ test('good mic flows', async ({ page }) => {
     if (l[0]) l[0].device = 'Wired headset';
     localStorage.setItem('precall.history.v1', JSON.stringify(l));
   });
+  await page.evaluate(() => window.scrollBy(0, 110));
   await snap(page, 'call-top');
+  await page.evaluate(() => window.scrollTo(0, 0));
   await page.getByText('Tone balance', { exact: true }).last().scrollIntoViewIfNeeded();
   await page.evaluate(() => window.scrollBy(0, -20));
   await snap(page, 'call-tone');
@@ -70,6 +72,7 @@ test('good mic flows', async ({ page }) => {
   await page.getByRole('button', { name: 'Begin' }).click();
   await expect(page.getByText('Results', { exact: true })).toBeVisible({ timeout: 40000 });
   await page.waitForTimeout(1400);
+  await page.evaluate(() => window.scrollBy(0, 110));
   await snap(page, 'check-summary');
 
   await page.goto('/#/camera');
@@ -78,6 +81,7 @@ test('good mic flows', async ({ page }) => {
   await page.getByRole('button', { name: 'Analyze' }).click();
   await expect(page.getByText('Breakdown')).toBeVisible({ timeout: 10000 });
   await page.waitForTimeout(1300);
+  await page.evaluate(() => window.scrollBy(0, 250));
   await snap(page, 'camera-report');
 
   await page.goto('/#/mic');

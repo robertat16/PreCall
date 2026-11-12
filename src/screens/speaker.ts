@@ -39,41 +39,42 @@ export const speakerScreen: Screen = ({ root, back }) => {
 
   // Sweep
   const freqOut = h('div', { class: 'sweep-readout', 'aria-live': 'off' }, '—');
-  const result = h('div', { class: 'small muted center', 'aria-live': 'polite' }, 'The tone rises from deep bass to very high treble. Tap “I can’t hear it” when it disappears.');
+  const result = h('div', { class: 'small muted center', 'aria-live': 'polite' }, 'The tone rises from deep bass to very high treble. Tap “I can’t hear it” when it disappears. This checks your speakers or headphones, not your hearing.');
   const startBtn = h('button', { class: 'btn primary', }, icon('play'), 'Start sweep') as HTMLButtonElement;
-  const markBtn = h('button', { class: 'btn secondary', disabled: true }, 'I can’t hear it') as HTMLButtonElement;
+  const markBtn = h('button', { class: 'btn secondary', style: 'display:none' }, 'I can’t hear it') as HTMLButtonElement;
+  let marked = false;
   let sweep: Awaited<ReturnType<typeof playSweep>> | null = null;
   let lastF = 0;
   const fmt = (f: number) => (f >= 1000 ? `${(f / 1000).toFixed(1)} kHz` : `${Math.round(f)} Hz`);
   startBtn.addEventListener('click', async () => {
     stopAll();
-    markBtn.disabled = false;
-    startBtn.disabled = true;
+    marked = false;
+    markBtn.style.display = '';
+    startBtn.style.display = 'none';
     result.textContent = 'Listening… the tone rises from deep bass to very high treble.';
-    sweep = await playSweep({ from: 40, to: 18000, seconds: 16, volume: 0.18, onFreq: (f) => { lastF = f; freqOut.textContent = fmt(f); } });
+    sweep = await playSweep({ from: 40, to: 18000, seconds: 16, volume: 0.18, onFreq: (f) => { if (marked) return; lastF = f; freqOut.textContent = fmt(f); } });
     const mine = sweep;
     sweepStop = () => mine.stop();
     mine.done.then(() => {
       if (sweep !== mine) return;
-      startBtn.disabled = false;
-      markBtn.disabled = true;
-      if (result.dataset.marked !== '1') result.textContent = 'You heard the whole sweep, up to 18 kHz. Excellent range.';
-      result.dataset.marked = '';
+      startBtn.style.display = '';
+      markBtn.style.display = 'none';
+      startBtn.replaceChildren(icon('redo'), 'Run again');
+      if (!marked) result.textContent = 'The tone played all the way up to 18 kHz. Your speakers or headphones cover the full range.';
       sweep = null;
     });
   });
   markBtn.addEventListener('click', () => {
     if (!sweep) return;
-    const f = lastF || sweep.currentFreq();
-    result.dataset.marked = '1';
+    const f = Math.round(lastF || sweep.currentFreq());
+    marked = true;
     sweep.stop();
-    markBtn.disabled = true;
     freqOut.textContent = fmt(f);
     let verdict: string;
     if (f < 2000) verdict = 'That was early. The tone keeps rising, so try again and tap only when it fully disappears.';
     else if (f < 6000) verdict = 'That’s a low cut-off. Your headset may be in low-quality hands-free mode, or the volume is too low.';
-    else if (f < 12000) verdict = 'A normal range for many headsets and listeners. Voices will sound clear.';
-    else verdict = 'Great high-frequency range.';
+    else if (f < 12000) verdict = 'A normal range for many headsets. Voices will sound clear.';
+    else verdict = 'Great high-frequency range from your speakers or headphones.';
     result.textContent = `The tone faded out at ${fmt(f)}. ${verdict}`;
   });
 

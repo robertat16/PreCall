@@ -9,7 +9,8 @@ import { relTime } from './home';
 const RANK: Record<Status, number> = { poor: 0, fair: 1, good: 2, great: 3 };
 
 function metricsOf(e: HistoryEntry): Metric[] {
-  return [...(e.mic?.metrics ?? []), ...(e.camera?.metrics ?? [])];
+  const echo: Metric[] = e.echo ? [{ id: 'echo', label: 'Echo leak', value: e.echo.label, status: e.echo.status, detail: e.echo.detail }] : [];
+  return [...(e.mic?.metrics ?? []), ...echo, ...(e.camera?.metrics ?? [])];
 }
 
 /** Side-by-side comparison of two saved results (e.g. two headsets). */
@@ -32,14 +33,21 @@ export const compareScreen: Screen = ({ root, back, params, nav }) => {
       h('div', { class: 'when' }, relTime(e.createdAt)));
 
   const diff = r.score - l.score;
+  const winner = diff > 0 ? r : l;
+  const loser = diff > 0 ? l : r;
+  const clar = (e: HistoryEntry) => e.mic?.metrics.find((m) => m.id === 'clarity')?.value.split(' · ')[0]?.toLowerCase();
+  const wc = clar(winner);
+  const lc = clar(loser);
   const verdict =
     Math.abs(diff) < 4
-      ? 'These two sound about the same.'
-      : `${diff > 0 ? 'B' : 'A'} (${(diff > 0 ? r : l).device}) is better by ${Math.abs(diff)} points.`;
+      ? `These two ${l.mic && r.mic ? 'sound' : 'score'} about the same.`
+      : `${winner.device} ${winner.mic ? 'sounds' : 'looks'} better by ${Math.abs(diff)} points${wc && lc && wc !== lc ? `: ${wc} vs ${lc} audio` : ''}.`;
 
   const lm = new Map(metricsOf(l).map((m) => [m.id, m]));
   const rm = new Map(metricsOf(r).map((m) => [m.id, m]));
   const ids = [...new Set([...lm.keys(), ...rm.keys()])];
+  const gap = (id: string) => Math.abs((lm.get(id) ? RANK[lm.get(id)!.status] : -1) - (rm.get(id) ? RANK[rm.get(id)!.status] : -1));
+  ids.sort((p, q) => gap(q) - gap(p));
   const table = h('div', { class: 'card tight' });
   for (const id of ids) {
     const x = lm.get(id);

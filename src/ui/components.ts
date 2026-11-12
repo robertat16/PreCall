@@ -88,13 +88,15 @@ export function toneBars(t: ToneBalance): HTMLElement {
   const pos = (db: number) => 50 + (Math.max(-RANGE, Math.min(RANGE, db)) / RANGE) * 50;
   const row = (label: string, db: number, lo: number, hi: number, note: string) => {
     const ok = db >= lo && db <= hi;
+    const nearLo = ok && db < lo + 2.5;
+    const nearHi = ok && db > hi - 2.5;
     return h('div', { class: 'eq-row' },
       h('div', { class: 'eq-l' }, label),
       h('div', { class: 'eq-track' },
         h('div', { class: 'eq-ok', style: `left:${pos(lo)}%;width:${pos(hi) - pos(lo)}%` }),
         h('div', { class: 'eq-mid' }),
         h('div', { class: `eq-dot ${ok ? '' : 'off'}`, style: `left:${pos(db)}%` })),
-      h('div', { class: 'eq-v' }, ok ? 'Natural' : note));
+      h('div', { class: 'eq-v' }, nearLo ? 'Slightly low' : nearHi ? 'Slightly high' : ok ? 'Natural' : note));
   };
   return h('div', { class: 'eq', role: 'img', 'aria-label': `Tone: bass ${t.bassDb.toFixed(0)} dB and treble ${t.trebleDb.toFixed(0)} dB compared with a natural voice` },
     row('Bass', t.bassDb, -11, 7, t.bassDb > 7 ? 'Boomy' : 'Thin'),

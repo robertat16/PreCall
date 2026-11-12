@@ -116,10 +116,6 @@ export function captureThumb(view: CamView): string | undefined {
   c.height = Math.round((v.videoHeight / v.videoWidth) * w);
   const g = c.getContext('2d');
   if (!g) return undefined;
-  if (view.facing() === 'user') {
-    g.translate(w, 0);
-    g.scale(-1, 1);
-  }
   g.drawImage(v, 0, 0, c.width, c.height);
   try {
     return c.toDataURL('image/jpeg', 0.8);
@@ -131,7 +127,7 @@ export function captureThumb(view: CamView): string | undefined {
 export function cameraReportView(r: CameraReport, thumb?: string): HTMLElement {
   return h('div', { style: 'display:flex;flex-direction:column;gap:14px' },
     h('div', { class: 'card' }, h('div', { class: 'score-wrap' }, scoreRing(r.score, r.grade), h('h2', null, r.headline), h('p', null, r.summary)),
-      thumb ? h('img', { class: 'thumb', src: thumb, alt: 'The frame that was analyzed', style: 'margin-top:14px' }) : null),
+      thumb ? h('img', { class: 'thumb', src: thumb, alt: 'The frame that was analyzed, as others see you', style: 'margin-top:14px' }) : null),
     h('div', { class: 'card tight' }, h('h3', { style: 'margin:4px 2px 4px' }, 'Breakdown'), h('div', { class: 'small muted', style: 'margin:0 2px 6px' }, 'Tap any row for details and fixes.'), metricList(r.metrics)));
 }
 

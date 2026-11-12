@@ -190,7 +190,7 @@ export class MicSession {
         cancelAnimationFrame(raf);
         clearInterval(watchdog);
         signal?.removeEventListener('abort', onAbort);
-        this.track?.removeEventListener('ended', onAbort);
+        this.track?.removeEventListener('ended', onEnded);
         try { this.source.disconnect(node); } catch { /* already */ }
         try { node.disconnect(); } catch { /* already */ }
         try { sink.disconnect(); } catch { /* already */ }
@@ -202,8 +202,9 @@ export class MicSession {
         reject(e);
       };
       const onAbort = () => fail(new DOMException('Aborted', 'AbortError'));
+      const onEnded = () => fail(new MicError('notfound', 'Your microphone disconnected during the test. Reconnect it and try again.'));
       signal?.addEventListener('abort', onAbort, { once: true });
-      this.track?.addEventListener('ended', onAbort, { once: true });
+      this.track?.addEventListener('ended', onEnded, { once: true });
 
       const finish = () => {
         if (finished) return;

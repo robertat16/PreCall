@@ -13,7 +13,7 @@ Everything runs on the device; nothing is uploaded.
 | Echo test call | 3 s of silence, then 8 s of reading a sentence. You get a 0–100 score and can hear yourself back |
 | Mic analysis | Voice level, background noise, voice-to-noise ratio, clarity / bandwidth (detects Bluetooth “hands-free” narrowband), tone balance (bass/mids/treble vs. a natural voice), distortion/clipping, 50/60 Hz hum, static & crackle, dropouts, echo leak |
 | Live mic | Real-time level meter (with target zone and peak hold) and spectrum |
-| Speakers | Left / right / both / bass tones and a 40 Hz → 18 kHz hearing-range sweep |
+| Speakers | Left / right / both / bass tones and a 40 Hz → 18 kHz sweep of what your speakers/headphones reproduce |
 | Camera | Resolution, frame rate, lighting, backlight, contrast, focus and color cast |
 | Video test call | Record 10 s of video + audio and watch it back |
 | Input routing | Android plugin switches the mic between Bluetooth, wired/USB and the built-in mic |
@@ -75,7 +75,7 @@ Every push to `main` runs **.github/workflows/android.yml**:
 
 `versionCode` = 1000 + run number × 10 + attempt (always increases, even on re-runs). `versionName` comes from `package.json`.
 
-Pushing a tag like `v1.0.1` also attaches the AAB/APK to a GitHub Release and, if `PLAY_SERVICE_ACCOUNT_JSON` is set, uploads the bundle to the Play Console **internal testing** track.
+Pushing a tag like `v1.0.1` (or publishing a GitHub Release with that tag) also attaches the AAB/APK to the release and, if `PLAY_SERVICE_ACCOUNT_JSON` is set, uploads the bundle to Google Play as a draft on the chosen track (default: closed testing).
 
 ### Repository secrets
 

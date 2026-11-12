@@ -26,6 +26,11 @@ export const historyScreen: Screen = ({ root, back, nav }) => {
   root.append(topbar('History', back, clearBtn), body);
 
   const pick = (id: string) => {
+    const kindOf = (x: string) => (getEntry(x)?.mic ? 'audio' : 'camera');
+    if (picked.length === 1 && !picked.includes(id) && kindOf(picked[0]) !== kindOf(id)) {
+      toast(kindOf(picked[0]) === 'audio' ? 'Pick another mic test or full check to compare.' : 'Pick another camera test to compare.');
+      return;
+    }
     picked = picked.includes(id) ? picked.filter((x) => x !== id) : [...picked, id].slice(-2);
     if (picked.length === 2) {
       const [a, b] = picked;

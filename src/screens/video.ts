@@ -125,7 +125,13 @@ export const videoScreen: Screen = ({ root, back, signal }) => {
     const v = h('video', { playsinline: true, src: url, class: facing === 'user' ? 'mirror' : '' }) as HTMLVideoElement;
     const playBtn = h('button', { class: 'icon-btn', 'aria-label': 'Play' }, icon('play'));
     const fill = h('div');
-    const bar = h('div', { class: 'bar', role: 'slider', 'aria-label': 'Playback position', 'aria-valuemin': 0, 'aria-valuemax': 100 }, fill);
+    const bar = h('div', { class: 'bar', role: 'slider', tabindex: 0, 'aria-label': 'Playback position', 'aria-valuemin': 0, 'aria-valuemax': 100 }, fill);
+    bar.addEventListener('keydown', (e) => {
+      const step = e.key === 'ArrowRight' ? 1 : e.key === 'ArrowLeft' ? -1 : 0;
+      if (!step) return;
+      e.preventDefault();
+      v.currentTime = Math.max(0, Math.min(dur(), v.currentTime + step));
+    });
     const time = h('span', { class: 't' }, '0:00');
     const fmt = (t: number) => `${Math.floor(t / 60)}:${String(Math.floor(t % 60)).padStart(2, '0')}`;
     const dur = () => (isFinite(v.duration) && v.duration > 0 ? v.duration : CLIP_SECONDS);

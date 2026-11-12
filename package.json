@@ -10,7 +10,7 @@
     "test:e2e": "playwright test",
     "sync": "npm run build && npx cap sync android",
     "icons": "node scripts/make-icons.mjs",
-    "store:shots": "npm run build && playwright test -c playwright.store.config.ts && node scripts/compose-store-shots.mjs"
+    "store:shots": "python3 scripts/fixtures/make-person-y4m.py && npm run build && playwright test -c playwright.store.config.ts && node scripts/compose-store-shots.mjs"
   },
   "author": "PreCall",
   "license": "UNLICENSED",

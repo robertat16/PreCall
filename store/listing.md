@@ -40,7 +40,7 @@ LIVE MIC METER
 A real-time level meter and frequency spectrum, perfect for finding the right mic position.
 
 SPEAKER & HEADPHONE TEST
-Left/right channel check, a bass tone and a rising sweep that shows how much of the range you can hear.
+Left/right channel check, a bass tone and a rising sweep that shows how much of the range your speakers or headphones reproduce.
 
 CAMERA CHECK
 Analyzes lighting, backlight, contrast, focus, color, resolution and frame rate, with a framing guide.
@@ -61,11 +61,11 @@ Scores are guidance, not lab measurements.
 
 ## Screenshot captions (built into the images)
 
-1. Sound and look your best in one minute
-2. Catches muffled Bluetooth "hands-free" audio
-3. A scored test call, with clear fixes
-4. See exactly how your voice sounds
-5. Compare headsets side by side
-6. Camera lighting, focus and framing check
-7. Live mic meter and spectrum
-8. Private: everything stays on your phone
+1. Sound and look your best: a one-minute check before every call
+2. Spots muffled Bluetooth: know when your headset sounds like a phone line
+3. A scored test call: hear yourself back, with clear fixes
+4. See how your voice sounds: tone, clarity, noise, hum and static
+5. Compare headsets: side by side, so you pick the best mic
+6. Look sharp on video: lighting, focus, color and framing
+7. Ready in one minute: mic, echo and camera in one score
+8. Private by design: everything stays on your phone

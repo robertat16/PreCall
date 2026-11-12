@@ -38,11 +38,16 @@ async function runCall(page: Page) {
     await page.addInitScript(() => localStorage.clear());
     await runCall(page);
     await snap(page, 'bt-top');
+    await page.evaluate(() => window.scrollBy(0, 110));
+    await snap(page, 'bt-play');
     await page.locator('.metric', { hasText: 'Clarity' }).first().scrollIntoViewIfNeeded();
     await page.evaluate(() => window.scrollBy(0, -140));
     await snap(page, 'bt-clarity');
-    await page.getByText('Why you sound like a phone line').scrollIntoViewIfNeeded();
-    await page.evaluate(() => window.scrollBy(0, -60));
+    await page.evaluate(() => {
+      const card = [...document.querySelectorAll('.card')].find((c) => c.textContent?.includes('Why you sound like a phone line')) as HTMLElement;
+      const bar = document.querySelector('.topbar') as HTMLElement;
+      window.scrollTo(0, card.getBoundingClientRect().top + window.scrollY - bar.offsetHeight - 14);
+    });
     await snap(page, 'bt-card');
     const hist = await page.evaluate(() => localStorage.getItem('precall.history.v1'));
     writeFileSync(HIST, hist ?? '[]');

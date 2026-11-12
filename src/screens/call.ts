@@ -1,5 +1,6 @@
 import type { Screen } from '../router';
-import { addHistory, getHistory, setSettings } from '../store';
+import { addHistory, getHistory } from '../store';
+import type { RouteKind } from '../native/audioRoute';
 import { topbar } from '../ui/components';
 import { clear, h, isAbort } from '../ui/dom';
 import { icon } from '../ui/icons';
@@ -19,15 +20,18 @@ export const callScreen: Screen = ({ root, back, nav, signal }) => {
       h('div', { class: 'stage' },
         h('div', { class: 'pulse-orb' }, h('div', { class: 'halo' }), h('div', { class: 'core' }, icon('phone'))),
         h('h2', null, 'Echo test call'),
-        h('p', null, `Like the test call in Teams or Zoom: stay quiet for ${QUIET_SECONDS} seconds, then read a sentence for ${SPEAK_SECONDS}. You’ll hear it back with a full breakdown.`),
-        h('button', { class: 'btn primary block', onclick: start }, icon('mic'), 'Start test call'),
+        h('p', null, `Like the test call in most video-call apps: stay quiet for ${QUIET_SECONDS} seconds, then read a sentence for ${SPEAK_SECONDS}. You’ll hear it back with a full breakdown.`),
+        h('button', { class: 'btn primary block', onclick: () => void start() }, icon('mic'), 'Start test call'),
         h('div', { class: 'small muted' }, 'You’ll be asked for microphone access. Nothing leaves your phone.')),
       inputSettingsCard(),
       h('div', { class: 'footer-note' }, 'Tip: test the headset exactly as you’ll wear it on the call.'),
     );
   };
 
-  const start = async () => {
+  const start = async (route?: RouteKind) => {
+    stopPlayback?.();
+    stopPlayback = null;
+    running?.abort();
     running = new AbortController();
     const abort = () => running?.abort();
     signal.addEventListener('abort', abort, { once: true });
@@ -35,7 +39,7 @@ export const callScreen: Screen = ({ root, back, nav, signal }) => {
     const stage = h('div', { class: 'stage', 'aria-live': 'polite' });
     body.append(stage, h('button', { class: 'btn ghost block', onclick: () => { running?.abort(); intro(); } }, 'Cancel'));
     try {
-      const res = await runMicCapture(stage, running.signal);
+      const res = await runMicCapture(stage, running.signal, { route });
       const entry = addHistory({ kind: 'mic', device: res.device, score: res.report.score, mic: res.report, processing: res.processing });
       clear(body);
       const pb = playbackCard(res.speech, res.sampleRate);
@@ -45,9 +49,9 @@ export const callScreen: Screen = ({ root, back, nav, signal }) => {
         micReportView(res.report, { device: res.device, processing: res.processing }),
         pb.el,
         ...(res.report.voiceDetected && res.report.bandwidthClass === 'narrowband'
-          ? [narrowbandCard(() => { setSettings({ route: 'builtin' }); void start(); })]
+          ? [narrowbandCard(res.device, () => void start('builtin'), route)]
           : []),
-        micDetailsView(res.report),
+        micDetailsView(res.report, undefined, { hideClarityTip: res.report.bandwidthClass === 'narrowband' }),
         prev ? h('button', { class: 'btn secondary block', onclick: () => nav(`compare/${prev.id}/${entry.id}`) }, icon('ab'), `Compare with previous (${prev.score})`) : h('div', { class: 'small muted center' }, 'Tip: test another headset next, then compare the two.'),
         h('div', { class: 'btn-row' },
           h('button', { class: 'btn secondary', onclick: intro }, icon('redo'), 'Test again'),

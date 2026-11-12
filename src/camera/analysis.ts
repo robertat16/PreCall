@@ -255,7 +255,7 @@ export function analyzeCamera(input: {
   else if (score >= 75) headline = 'Looking good';
   else if (score >= 60) headline = 'Watchable, could be better';
   else headline = 'Fix this before your call';
-  const tips = metrics.filter((m) => m.status !== 'great').length;
+  const tips = metrics.filter((m) => m.status === 'fair' || m.status === 'poor').length;
   const summary = issues.length
     ? issues.slice(0, 2).map((i) => i.t).join(' ')
     : tips

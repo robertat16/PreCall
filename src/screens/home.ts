@@ -21,7 +21,7 @@ export const homeScreen: Screen = ({ root, nav }) => {
         h('button', { class: 'btn primary block', onclick: () => nav('check') }, icon('spark'), 'Run full check · 1 min'),
         last
           ? h('button', { class: 'btn ghost block', style: 'margin-top:6px', onclick: () => nav(`report/${last.id}`) },
-              'Last result: ', h('b', { class: `c-${scoreStatus(last.score)}`, style: 'margin-left:4px' }, `${last.score}`), h('span', { class: 'muted', style: 'margin-left:6px' }, `· ${relTime(last.createdAt)}`))
+              h('span', { class: 'last-result' }, h('span', null, 'Last result'), h('b', { class: `c-${scoreStatus(last.score)}` }, `${last.score}`), h('span', { class: 'muted' }, `· ${relTime(last.createdAt)}`)))
           : null),
       h('div', { class: 'section-title' }, 'Individual tests'),
       h('div', { class: 'grid' },

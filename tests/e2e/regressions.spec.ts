@@ -90,6 +90,6 @@ test('two results can be compared side by side', async ({ page }) => {
   await page.getByRole('button', { name: 'Compare two results' }).click();
   await page.locator('.hist-item').nth(0).click();
   await page.locator('.hist-item').nth(1).click();
-  await expect(page.getByText(/is better by 34 points/)).toBeVisible();
+  await expect(page.getByText(/sounds better by 34 points: full range vs phone-line audio/)).toBeVisible();
   expect(errors).toEqual([]);
 });

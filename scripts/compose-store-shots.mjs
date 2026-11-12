@@ -4,7 +4,7 @@ import { mkdirSync } from 'node:fs';
 
 const shots = [
   ['home', 'Sound and look your best', 'A one-minute check before every call'],
-  ['bt-top', 'Spots muffled Bluetooth', 'Know when your headset sounds like a phone line'],
+  ['bt-card', 'Spots muffled Bluetooth', 'Know when your headset sounds like a phone line'],
   ['call-top', 'A scored test call', 'Hear yourself back, with clear fixes'],
   ['call-tone', 'See how your voice sounds', 'Tone, clarity, noise, hum and static'],
   ['compare', 'Compare headsets', 'Side by side, so you pick the best mic'],

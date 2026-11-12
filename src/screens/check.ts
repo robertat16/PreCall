@@ -7,7 +7,7 @@ import { gradeFor } from '../audio/analysis';
 import { icon, type IconName } from '../ui/icons';
 import { analyzeCurrentCamera, cameraReportView, cameraView, captureThumb } from './camera';
 import { echoStatusScore, inputSettingsCard, micDetailsView, micErrorView, micReportView, narrowbandCard, playbackCard, runMicCapture, type MicTestResult } from './micflow';
-import { setSettings } from '../store';
+import type { RouteKind } from '../native/audioRoute';
 
 export function overallScore(mic: number, echo?: number, camera?: number): number {
   let w = 0.65;
@@ -17,12 +17,15 @@ export function overallScore(mic: number, echo?: number, camera?: number): numbe
   // the weakest link matters: a failing part caps the total
   const parts = [mic, camera].filter((v): v is number => v !== undefined);
   const cap = Math.min(...parts) + 25;
-  return Math.round(Math.min(s / w, cap));
+  let total = Math.round(Math.min(s / w, cap));
+  // "Excellent" overall only if every part is excellent
+  if (parts.some((p) => p < 90) || (echo !== undefined && echo < 90)) total = Math.min(total, 89);
+  return total;
 }
 
 function summaryText(mic: MicTestResult, camera: CameraReport | undefined, total: number): string {
   if (!mic.report.voiceDetected) return 'Check your mic selection and try again.';
-  if (total >= 90) return camera ? 'Your mic, audio and camera are all call-ready.' : 'Your mic and audio are call-ready.';
+  if (total >= 90) return camera ? 'Your mic, echo and camera are all call-ready.' : 'Your mic and echo are call-ready.';
   if (camera && camera.score < mic.report.score) return `Biggest win: your camera. ${camera.summary}`;
   return mic.report.summary;
 }
@@ -56,7 +59,12 @@ export const checkScreen: Screen = ({ root, back, nav, signal }) => {
     );
   };
 
-  const run = async () => {
+  let usedRoute: RouteKind | undefined;
+  const run = async (route?: RouteKind) => {
+    usedRoute = route;
+    cleanupPlayback?.();
+    cleanupPlayback = null;
+    ac?.abort();
     ac = new AbortController();
     const sig = ac.signal;
     const onLeave = () => ac?.abort();
@@ -68,7 +76,7 @@ export const checkScreen: Screen = ({ root, back, nav, signal }) => {
 
     let mic: MicTestResult;
     try {
-      mic = await runMicCapture(stage, sig, { echo: true, stepLabel: (i) => steps(i === 2 ? 1 : 0) });
+      mic = await runMicCapture(stage, sig, { echo: true, route, stepLabel: (i) => steps(i === 2 ? 1 : 0) });
     } catch (e) {
       if (isAbort(e)) return;
       clear(body);
@@ -117,7 +125,7 @@ export const checkScreen: Screen = ({ root, back, nav, signal }) => {
     const toggleBox = (el: HTMLElement) => { el.style.display = el.style.display === 'none' ? 'flex' : 'none'; };
     const pb = playbackCard(mic.speech, mic.sampleRate);
     cleanupPlayback = pb.stop;
-    micDetails.append(micDetailsView(mic.report, mic.echo));
+    micDetails.append(micDetailsView(mic.report, mic.echo, { hideClarityTip: mic.report.bandwidthClass === 'narrowband' }));
     if (camera) camDetails.append(cameraReportView(camera, thumb));
 
     body.append(
@@ -128,7 +136,7 @@ export const checkScreen: Screen = ({ root, back, nav, signal }) => {
           h('p', null, summaryText(mic, camera, total))),
         h('div', { class: 'footer-note' }, mic.device)),
       pb.el,
-      ...(mic.report.voiceDetected && mic.report.bandwidthClass === 'narrowband' ? [narrowbandCard(() => { setSettings({ route: 'builtin' }); void run(); })] : []),
+      ...(mic.report.voiceDetected && mic.report.bandwidthClass === 'narrowband' ? [narrowbandCard(mic.device, () => void run('builtin'), usedRoute)] : []),
       h('div', { class: 'section-title' }, 'Results'),
       row('mic', 'Microphone', mic.report.headline, mic.report.score, () => toggleBox(micDetails)),
       micDetails,

@@ -29,8 +29,8 @@ jobs:
           SUPPORT_EMAIL: ${{ vars.SUPPORT_EMAIL }}
         run: |
           if [ -z "$SUPPORT_EMAIL" ]; then
-            echo "::warning::Set the SUPPORT_EMAIL repository variable (Settings > Secrets and variables > Actions > Variables)"
-            SUPPORT_EMAIL="support@example.com"
+            echo "::error::Set the SUPPORT_EMAIL repository variable first (Settings > Secrets and variables > Actions > Variables), then re-run this workflow."
+            exit 1
           fi
           sed -i "s/__SUPPORT_EMAIL__/${SUPPORT_EMAIL}/g" docs/*.html
       - uses: actions/upload-pages-artifact@v3

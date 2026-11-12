@@ -68,14 +68,15 @@ export function inputSettingsCard(onChange?: () => void): HTMLElement {
 let routeGen = 0;
 
 /** Opens the mic the user picked. Native: routes audio first; returns the route claim to release later. */
-export async function openConfiguredMic(signal?: AbortSignal): Promise<MicSession> {
-  const s = getSettings();
+export async function openConfiguredMic(signal?: AbortSignal, routeOverride?: RouteKind): Promise<MicSession> {
+  const saved = getSettings();
+  const s = routeOverride ? { ...saved, route: routeOverride, deviceId: '' } : saved;
   const my = ++routeGen;
   if (isNative()) {
     const ok = await useRoute(s.route);
     if (!ok && s.route !== 'default') {
       toast('Couldn’t switch to that mic. Using the automatic choice instead.');
-      setSettings({ route: 'default' });
+      if (!routeOverride) setSettings({ route: 'default' });
       await useRoute('default');
     }
   }
@@ -133,8 +134,8 @@ function orbEl(kind: 'quiet' | 'speak') {
  * Runs the guided quiet → speak recording inside `stage`.
  * Optionally runs the echo-leak probe afterwards.
  */
-export async function runMicCapture(stage: HTMLElement, signal: AbortSignal, opts: { echo?: boolean; stepLabel?: (i: number) => HTMLElement } = {}): Promise<MicTestResult> {
-  const mic = await openConfiguredMic(signal);
+export async function runMicCapture(stage: HTMLElement, signal: AbortSignal, opts: { echo?: boolean; route?: RouteKind; stepLabel?: (i: number) => HTMLElement } = {}): Promise<MicTestResult> {
+  const mic = await openConfiguredMic(signal, opts.route);
   const claim = currentRouteClaim();
   let raf = 0;
   try {
@@ -185,9 +186,13 @@ export async function runMicCapture(stage: HTMLElement, signal: AbortSignal, opt
       await sleep(400, signal);
       const before = await mic.record(0.8, undefined, signal);
       const probe = await playEchoProbe(1.2);
-      const during = await mic.record(1.2, undefined, signal);
-      await probe.done;
-      echo = analyzeEchoLeak(before, during, mic.sampleRate);
+      try {
+        const during = await mic.record(1.2, undefined, signal);
+        await probe.done;
+        echo = analyzeEchoLeak(before, during, mic.sampleRate);
+      } finally {
+        probe.stop();
+      }
     }
 
     clear(stage);
@@ -255,9 +260,9 @@ export function micReportView(r: MicReport, extra?: { echo?: EchoReport; device?
   return wrap;
 }
 
-export function micDetailsView(r: MicReport, echo?: EchoReport): HTMLElement {
+export function micDetailsView(r: MicReport, echo?: EchoReport, opts: { hideClarityTip?: boolean } = {}): HTMLElement {
   const wrap = h('div', { style: 'display:flex;flex-direction:column;gap:14px' });
-  const ms = [...r.metrics];
+  const ms = r.metrics.map((m) => (opts.hideClarityTip && m.id === 'clarity' ? { ...m, tip: undefined } : m));
   if (echo) {
     ms.push({ id: 'echo', label: 'Echo leak', value: echo.label, status: echo.status, detail: echo.detail });
   }
@@ -302,12 +307,16 @@ export function mediaErrorView(err: unknown, onRetry: () => void, fallback = 'So
 export { scoreStatus };
 
 /** Shown when narrowband audio is detected: explains Bluetooth hands-free mode and offers a one-tap retest. */
-export function narrowbandCard(onRetestPhoneMic: () => void): HTMLElement {
+export function narrowbandCard(device: string, onRetestPhoneMic: () => void, usedRoute?: RouteKind): HTMLElement {
+  const route = usedRoute ?? getSettings().route;
+  const bt = route === 'bluetooth' || /bluetooth|buds|airpods|headset|hands-?free|sco|ble/i.test(device);
   return h('div', { class: 'card', style: 'border-color:rgba(255,107,122,.35);background:rgba(255,107,122,.05)' },
-    h('div', { class: 'eyebrow', style: 'color:var(--poor)' }, 'Bluetooth hands-free mode'),
+    h('div', { class: 'eyebrow', style: 'color:var(--poor)' }, bt ? 'Bluetooth hands-free mode' : 'Narrowband audio'),
     h('h3', { style: 'margin-top:8px' }, 'Why you sound like a phone line'),
-    h('p', { class: 'small muted', style: 'margin:0 0 14px' }, 'Most Bluetooth headsets switch to a low-quality “hands-free” mode as soon as their mic turns on. Music sounds fine, but your voice is squeezed into a narrow band. The usual fix is to keep the headset for listening and use a different mic.'),
-    isNative()
+    h('p', { class: 'small muted', style: 'margin:0 0 14px' }, bt
+      ? 'Most Bluetooth headsets switch to a low-quality “hands-free” mode as soon as their mic turns on. Music sounds fine, but your voice is squeezed into a narrow band. The usual fix is to keep the headset for listening and use a different mic.'
+      : 'Your mic only delivers the narrow band of an old phone line, so your voice loses its crispness. This usually comes from a Bluetooth link or a low-quality adapter. Try a different mic and compare.'),
+    isNative() && route !== 'builtin'
       ? h('button', { class: 'btn primary block', onclick: onRetestPhoneMic }, icon('redo'), 'Retest with phone mic')
       : h('p', { class: 'small', style: 'margin:0' }, 'Try the test again with a wired headset or your device’s built-in mic to hear the difference.'));
 }
