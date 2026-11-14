@@ -93,3 +93,13 @@ test('two results can be compared side by side', async ({ page }) => {
   await expect(page.getByText(/sounds better by 34 points: full range vs phone-line audio/)).toBeVisible();
   expect(errors).toEqual([]);
 });
+
+test('face detection loads on-device and shows a framing hint', async ({ page }) => {
+  const errors = watchErrors(page);
+  await page.goto('/#/camera');
+  await expect(page.locator('.cam .hud').getByText(/Can’t see your face|Well framed|Move|Center|Lower|Raise/)).toBeVisible({ timeout: 20000 });
+  await page.getByRole('button', { name: 'Analyze' }).click();
+  await expect(page.getByText('Breakdown')).toBeVisible({ timeout: 15000 });
+  await expect(page.locator('.metric', { hasText: 'Framing' })).toBeVisible();
+  expect(errors.filter((e) => !/WebGL|webgl|GPU/i.test(e))).toEqual([]);
+});

@@ -30,6 +30,38 @@ export function audioContext(): AudioContext {
   return ctx;
 }
 
+/**
+ * Start a fresh audio context. Used by the speaker test so playback is set up in
+ * normal stereo media mode, not the mono "call" mode a previous mic test may have used.
+ */
+export async function freshAudioContext(): Promise<AudioContext> {
+  if (ctx && ctx.state !== 'closed') {
+    try {
+      await ctx.close();
+    } catch {
+      /* already closing */
+    }
+  }
+  ctx = null;
+  workletReady = null;
+  return resumeAudio();
+}
+
+/** Configure the output for true two-channel playback where the device supports it. */
+function stereoDestination(c: AudioContext): AudioDestinationNode {
+  const d = c.destination;
+  try {
+    if (d.maxChannelCount >= 2) {
+      d.channelCount = 2;
+      d.channelCountMode = 'explicit';
+      d.channelInterpretation = 'discrete';
+    }
+  } catch {
+    /* some implementations lock these */
+  }
+  return d;
+}
+
 export async function resumeAudio(): Promise<AudioContext> {
   const c = audioContext();
   if (c.state === 'suspended') {
@@ -349,15 +381,22 @@ export async function playTone(opts: {
     g.gain.setValueAtTime(vol, t + opts.seconds - 0.05);
     g.gain.linearRampToValueAtTime(0, t + opts.seconds);
   }
-  let out: AudioNode = g;
-  if (typeof opts.pan === 'number' && c.createStereoPanner) {
-    const p = c.createStereoPanner();
-    p.pan.value = opts.pan;
-    g.connect(p);
-    out = p;
-  }
+  // Route explicitly to the left/right output channel (more reliable on
+  // Bluetooth and USB headsets than a stereo panner on a mono source).
+  const merger = c.createChannelMerger(2);
+  const pan = typeof opts.pan === 'number' ? Math.max(-1, Math.min(1, opts.pan)) : 0;
+  const angle = ((pan + 1) * Math.PI) / 4;
+  const gl = c.createGain();
+  const gr = c.createGain();
+  gl.gain.value = pan === 0 ? 1 : Math.cos(angle);
+  gr.gain.value = pan === 0 ? 1 : Math.sin(angle);
+  if (Math.abs(gl.gain.value) < 1e-3) gl.gain.value = 0;
+  if (Math.abs(gr.gain.value) < 1e-3) gr.gain.value = 0;
+  g.connect(gl).connect(merger, 0, 0);
+  g.connect(gr).connect(merger, 0, 1);
+  const out: AudioNode = merger;
   osc.connect(g);
-  out.connect(c.destination);
+  out.connect(stereoDestination(c));
   let resolveDone!: () => void;
   const done = new Promise<void>((r) => (resolveDone = r));
   osc.onended = () => {

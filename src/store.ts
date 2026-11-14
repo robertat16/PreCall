@@ -83,11 +83,14 @@ export function clearHistory(): void {
 }
 
 export const PROMPTS = [
-  'The quick brown fox jumps over the lazy dog, then sips some fresh coffee before the morning call.',
-  'Six thick thistle sticks. She sells seashells by the seashore, and the shells she sells are surely seashells.',
-  'Can everyone hear me okay? Let me share my screen and we can walk through the numbers for this quarter.',
-  'Peter Piper picked a peck of pickled peppers. How many pickled peppers did Peter Piper pick?',
-  'Testing, one, two, three. Bass, mids and treble: a deep hum, a clear voice, and a crisp sharp “s”.',
+  'Hi everyone, thanks for joining. Today we’ll review the project schedule, walk through a few open questions, and agree on next steps.',
+  'Can everyone hear me okay? Let me share my screen, and we can go through the numbers for this quarter together.',
+  'Thanks for having me. I’m excited to talk about this role and share a little about my background and recent projects.',
+  'Good morning. Before we start, I’d like to quickly recap last week’s discussion so everyone is on the same page.',
+  'Let’s take a moment for questions. If anything isn’t clear, please speak up, and I’ll be happy to explain it again.',
+  'Sorry, I think you cut out for a second. Could you repeat that last part? I want to make sure I understood it correctly.',
+  'To summarize, we’ll finalize the design this week, send it out for review on Friday, and meet again next Tuesday.',
+  'Hello, this is a quick sound check. I’m speaking at my normal volume, the same way I would on a real call.',
 ];
 
 export function nextPrompt(): string {

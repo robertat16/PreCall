@@ -8,6 +8,7 @@ export default defineConfig({
     target: 'es2020',
     assetsInlineLimit: 0,
     sourcemap: false,
+    chunkSizeWarningLimit: 2500,
   },
   test: {
     include: ['tests/unit/**/*.test.ts'],

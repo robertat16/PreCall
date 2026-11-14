@@ -1,4 +1,4 @@
-import { playSweep, playTone, type ToneHandle } from '../audio/engine';
+import { freshAudioContext, playSweep, playTone, type ToneHandle } from '../audio/engine';
 import type { Screen } from '../router';
 import { notice, topbar } from '../ui/components';
 import { h } from '../ui/dom';
@@ -7,6 +7,8 @@ import { icon, type IconName } from '../ui/icons';
 export const speakerScreen: Screen = ({ root, back }) => {
   const body = h('main', { class: 'screen' });
   root.append(topbar('Speakers & headphones', back), body);
+  // Start clean in stereo media mode (a previous mic test may have left call-mode audio).
+  const ready = freshAudioContext().catch(() => undefined);
   let current: (ToneHandle & { pad?: HTMLElement }) | null = null;
   let sweepStop: (() => void) | null = null;
 
@@ -25,6 +27,7 @@ export const speakerScreen: Screen = ({ root, back }) => {
       stopAll();
       if (was) return;
       el.classList.add('playing');
+      await ready;
       const t = await play();
       current = Object.assign(t, { pad: el });
       t.done.then(() => {
@@ -87,7 +90,7 @@ export const speakerScreen: Screen = ({ root, back }) => {
       pad('speaker', 'Both', 'Centered tone', () => playTone({ freq: 523, seconds: 2.5, pulses: true, volume: 0.28 })),
       pad('bass', 'Bass', '60 Hz rumble', () => playTone({ freq: 60, seconds: 3, volume: 0.5 })),
     ),
-    h('div', { class: 'small muted', style: 'margin:0 4px' }, 'If left and right are swapped, your headphones are on backwards or the stereo setting is flipped. If bass is silent, small speakers simply can’t reproduce it, which is normal for phone speakers.'),
+    h('div', { class: 'small muted', style: 'margin:0 4px' }, 'Left should play only in your left ear, and Right only in your right. If both play in the same ear, check Settings → Accessibility → Audio on your phone: turn off “Mono audio” and center the left/right balance. Some Bluetooth headsets also play mono while their mic is active, so finish any calls first. If bass is silent on phone speakers, that’s normal: small speakers can’t reproduce it.'),
     h('div', { class: 'section-title' }, 'Frequency range'),
     h('div', { class: 'card' },
       freqOut,

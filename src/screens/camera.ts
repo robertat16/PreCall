@@ -1,5 +1,6 @@
 import { analyzeCamera, type CameraReport } from '../camera/analysis';
 import { CameraSampler, openCamera, stopStream, type Facing } from '../camera/engine';
+import { judgeFraming } from '../camera/framing';
 import type { Screen } from '../router';
 import { addHistory } from '../store';
 import { chip, metricList, scoreRing, topbar } from '../ui/components';
@@ -19,7 +20,7 @@ export interface CamView {
 }
 
 /** Camera preview with HUD (resolution / fps / light) and framing guide. */
-export function cameraView(opts: { hud?: boolean; withAudio?: boolean } = {}): CamView {
+export function cameraView(opts: { hud?: boolean; withAudio?: boolean; faces?: boolean } = {}): CamView {
   const video = h('video', { playsinline: true, muted: true, autoplay: true, class: 'mirror' }) as HTMLVideoElement;
   video.muted = true;
   const hud = h('div', { class: 'hud' });
@@ -34,8 +35,13 @@ export function cameraView(opts: { hud?: boolean; withAudio?: boolean } = {}): C
   let mirror = true;
   let gen = 0;
 
+  const guide = el.querySelector('.guide') as HTMLElement;
   const updateHud = () => {
     if (!sampler || !video.videoWidth) return;
+    const f = sampler.face();
+    const fr = f === undefined ? null : judgeFraming(f);
+    guide.classList.toggle('ok', fr?.issue === 'none');
+    guide.classList.toggle('warn', !!fr && fr.issue !== 'none');
     const s = sampler.stats();
     const fps = sampler.fps();
     const light = s ? s.brightness : 0;
@@ -44,6 +50,7 @@ export function cameraView(opts: { hud?: boolean; withAudio?: boolean } = {}): C
       chip(`${Math.min(video.videoWidth, video.videoHeight)}p`, ''),
       chip(fps ? `${fps.toFixed(0)} fps` : '— fps', fps && fps < 15 ? 'poor' : fps && fps < 22 ? 'fair' : 'great'),
       chip(s ? `Light ${Math.round((light / 255) * 100)}%` : 'Light —', lightCls),
+      ...(fr ? [chip(fr.hint, fr.issue === 'none' ? 'great' : 'fair')] : []),
     );
   };
 
@@ -66,7 +73,7 @@ export function cameraView(opts: { hud?: boolean; withAudio?: boolean } = {}): C
       video.classList.toggle('mirror', f === 'user' && mirror);
       try { await video.play(); } catch { /* autoplay handled by muted */ }
       placeholder.style.display = 'none';
-      sampler = new CameraSampler(video);
+      sampler = new CameraSampler(video, opts.faces === false ? undefined : () => ({ width: el.clientWidth, height: el.clientHeight }));
       if (opts.hud !== false) timer = window.setInterval(updateHud, 500);
     },
     sampler: () => sampler,
@@ -103,6 +110,8 @@ export async function analyzeCurrentCamera(view: CamView, ms: number, signal?: A
     height: v.videoHeight,
     fps: sampler.fps(),
     facing: view.facing(),
+    faces: sampler.lastFaces,
+    faceDetection: sampler.faceSupported(),
   });
 }
 

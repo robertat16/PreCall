@@ -675,3 +675,7 @@ h1, h2, h3 { text-wrap: balance; }
 .last-result { display: inline-flex; align-items: center; gap: 6px; }
 .cmp-row .v > span:last-child, .cmp-row .v { overflow: hidden; text-overflow: ellipsis; }
 .eq-scale { display: flex !important; justify-content: space-between; padding: 0 112px 0 68px; }
+
+.cam .guide { transition: border-color 0.3s, box-shadow 0.3s; }
+.cam .guide.ok { border-color: rgba(69, 230, 160, 0.85); border-style: solid; box-shadow: 0 0 24px rgba(69, 230, 160, 0.25); }
+.cam .guide.warn { border-color: rgba(255, 200, 87, 0.8); }

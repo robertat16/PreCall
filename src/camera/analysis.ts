@@ -1,4 +1,5 @@
 import { gradeFor, type Metric, type Status } from '../audio/analysis';
+import { framingMetric, type FaceBox } from './framing';
 
 export interface FrameStats {
   brightness: number; // mean luma 0..255
@@ -101,6 +102,8 @@ export interface CameraReport {
   grade: string;
   headline: string;
   summary: string;
+  /** The most important camera issue, in plain words ('' if none). */
+  topIssue: string;
   metrics: Metric[];
   width: number;
   height: number;
@@ -115,6 +118,8 @@ export function analyzeCamera(input: {
   height: number;
   fps: number;
   facing: string;
+  faces?: Array<FaceBox | null>;
+  faceDetection?: boolean;
 }): CameraReport {
   const { stats: s, width, height, fps } = input;
   const metrics: Metric[] = [];
@@ -163,6 +168,10 @@ export function analyzeCamera(input: {
     }
     push({ id: 'fps', label: 'Frame rate', value: fps > 0 ? `${fps.toFixed(0)} fps` : '—', status, detail, tip }, pen);
   }
+
+  // Framing (face position), when on-device face detection is available
+  const fr = framingMetric(input.faces ?? [], !!input.faceDetection);
+  if (fr) push(fr.metric, fr.pen);
 
   // Lighting
   {
@@ -249,17 +258,22 @@ export function analyzeCamera(input: {
   score = Math.round(Math.max(0, Math.min(100, score)));
   if (metrics.some((m) => m.status === 'fair' || m.status === 'poor')) score = Math.min(score, 89);
   issues.sort((a, b) => b.w - a.w);
+  const flagged = metrics.filter((m) => m.status === 'fair' || m.status === 'poor');
+  const worst = [...flagged].sort((a, b) => (a.status === 'poor' ? 0 : 1) - (b.status === 'poor' ? 0 : 1))[0];
   let headline: string;
   if (width === 0) headline = 'No video';
-  else if (score >= 90) headline = 'You look great';
-  else if (score >= 75) headline = 'Looking good';
-  else if (score >= 60) headline = 'Watchable, could be better';
+  else if (score >= 90 && !flagged.length) headline = 'You look great';
+  else if (score >= 75) headline = flagged.length === 1 ? 'Looking good, with one fix' : flagged.length ? 'Looking good, with a few fixes' : 'Looking good';
+  else if (score >= 60) headline = 'Watchable, but fix this';
   else headline = 'Fix this before your call';
-  const tips = metrics.filter((m) => m.status === 'fair' || m.status === 'poor').length;
-  const summary = issues.length
-    ? issues.slice(0, 2).map((i) => i.t).join(' ')
-    : tips
-      ? `Your camera is call-ready. ${tips === 1 ? 'One small tip' : `${tips} small tips`} below.`
-      : 'Your camera is call-ready.';
-  return { score, grade: gradeFor(score), headline, summary, metrics, width, height, fps, stats: s, facing: input.facing };
+  let summary: string;
+  if (width === 0) summary = 'No video frames were received.';
+  else if (!flagged.length) summary = 'Your camera is call-ready.';
+  else if (score >= 75) summary = `One thing to improve: ${lowerFirst(worst.detail)}${flagged.length > 1 ? ` (${flagged.length - 1} more tip${flagged.length > 2 ? 's' : ''} below)` : ''}`;
+  else summary = issues.slice(0, 2).map((i) => i.t).join(' ');
+  return { score, grade: gradeFor(score), headline, summary, topIssue: worst ? worst.detail : '', metrics, width, height, fps, stats: s, facing: input.facing };
+}
+
+function lowerFirst(s: string): string {
+  return s.charAt(0).toLowerCase() + s.slice(1);
 }

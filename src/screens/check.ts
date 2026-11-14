@@ -26,7 +26,7 @@ export function overallScore(mic: number, echo?: number, camera?: number): numbe
 function summaryText(mic: MicTestResult, camera: CameraReport | undefined, total: number): string {
   if (!mic.report.voiceDetected) return 'Check your mic selection and try again.';
   if (total >= 90) return camera ? 'Your mic, echo and camera are all call-ready.' : 'Your mic and echo are call-ready.';
-  if (camera && camera.score < mic.report.score) return `Biggest win: your camera. ${camera.summary}`;
+  if (camera && camera.score < mic.report.score && camera.topIssue) return `One thing to improve: your camera. ${camera.topIssue}`;
   return mic.report.summary;
 }
 

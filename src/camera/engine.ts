@@ -1,6 +1,8 @@
 import { describeMediaError, releaseStream, trackStream } from '../audio/engine';
 import { analyzeFrame, averageStats, type FrameStats } from './analysis';
 import { sleep } from '../ui/dom';
+import { detectFace } from './face';
+import type { FaceBox } from './framing';
 
 export type Facing = 'user' | 'environment';
 
@@ -46,8 +48,13 @@ export class CameraSampler {
   private lastStats: FrameStats | null = null;
   private collect: FrameStats[] | null = null;
   private timer = 0;
+  private faceTimer = 0;
+  private faceBusy = false;
+  private lastFace: FaceBox | null | undefined = undefined;
+  private faceAvailable = false;
+  private faceCollect: Array<FaceBox | null> | null = null;
 
-  constructor(private video: HTMLVideoElement) {
+  constructor(private video: HTMLVideoElement, private faceContainer?: () => { width: number; height: number }) {
     this.g = this.canvas.getContext('2d', { willReadFrequently: true })!;
     const rvfc = (video as unknown as { requestVideoFrameCallback?: RVFC }).requestVideoFrameCallback?.bind(video);
     if (rvfc) {
@@ -61,6 +68,32 @@ export class CameraSampler {
       this.rvfcId = rvfc(onFrame);
     }
     this.timer = window.setInterval(() => this.sample(), 250);
+    if (faceContainer) this.faceTimer = window.setInterval(() => void this.sampleFace(), 450);
+  }
+
+  private async sampleFace(): Promise<void> {
+    if (!this.running || this.faceBusy || this.video.readyState < 2 || !this.faceContainer) return;
+    this.faceBusy = true;
+    try {
+      const f = await detectFace(this.video, this.faceContainer());
+      if (!this.running) return;
+      if (f !== undefined) {
+        this.faceAvailable = true;
+        this.lastFace = f;
+        this.faceCollect?.push(f);
+      }
+    } finally {
+      this.faceBusy = false;
+    }
+  }
+
+  /** Latest face box (normalised to the preview), null if no face, undefined if detection unavailable. */
+  face(): FaceBox | null | undefined {
+    return this.faceAvailable ? this.lastFace : undefined;
+  }
+
+  faceSupported(): boolean {
+    return this.faceAvailable;
   }
 
   private sample(): void {
@@ -98,21 +131,29 @@ export class CameraSampler {
   /** Collect frame stats for `ms` and return their average. */
   async gather(ms: number, signal?: AbortSignal): Promise<FrameStats | null> {
     this.collect = [];
+    this.faceCollect = [];
     try {
       await sleep(ms, signal);
     } catch (e) {
       this.collect = null;
+      this.faceCollect = null;
       throw e;
     }
     const list = this.collect ?? [];
     this.collect = null;
+    this.lastFaces = this.faceCollect ?? [];
+    this.faceCollect = null;
     if (!list.length) return this.lastStats;
     return averageStats(list);
   }
 
+  /** Face boxes seen during the last gather(). */
+  lastFaces: Array<FaceBox | null> = [];
+
   stop(): void {
     this.running = false;
     clearInterval(this.timer);
+    clearInterval(this.faceTimer);
     const cancel = (this.video as unknown as { cancelVideoFrameCallback?: (id: number) => void }).cancelVideoFrameCallback;
     if (cancel && this.rvfcId) cancel.call(this.video, this.rvfcId);
   }
